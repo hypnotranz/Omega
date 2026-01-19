@@ -18,12 +18,12 @@ import type { Hash } from "../artifacts/hash";
  * MachineVal: Reified execution state as a first-class value.
  *
  * Enables:
- * - machine/step: Single-step execution
- * - machine/run: Run to completion or breakpoint
- * - machine/fork: Clone for multi-shot exploration
- * - machine/stack: Inspect continuation stack
- * - machine/eval-at: Evaluate expression in machine's environment
- * - machine/resume: Resume from effect with provided value
+ * - machine-step: Single-step execution
+ * - machine-run: Run to completion or breakpoint
+ * - machine-fork: Clone for multi-shot exploration
+ * - machine-stack: Inspect continuation stack
+ * - machine-eval-at: Evaluate expression in machine's environment
+ * - machine-resume: Resume from effect with provided value
  *
  * The machine captures the full CESK state for time-travel debugging,
  * breakpoint-based inspection, and parallel exploration of execution paths.

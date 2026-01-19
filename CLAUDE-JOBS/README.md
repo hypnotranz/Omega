@@ -17,6 +17,7 @@ Each job file includes:
 | Job ID | Title | Priority | Status |
 |--------|-------|----------|--------|
 | [001](./001-FIX-PRODUCTION-PRIMITIVES.md) | Fix Production Primitives | P0 - CRITICAL | ✅ DONE |
+| [002](./002-FIX-PRIMITIVE-NAMING-CONVENTIONS.md) | Fix Primitive Naming Conventions | P1 - Important | ✅ DONE |
 
 ## Job Status Legend
 

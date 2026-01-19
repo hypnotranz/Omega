@@ -135,7 +135,7 @@ describe("Prompt 6: Semantic Program Rewriting", () => {
       expect(result.changed).toBe(false); // Rule not applied due to where predicate
     });
 
-    it("[P6-6.1c] uses rewrite/fixpoint to normalize nested evals", () => {
+    it("[P6-6.1c] uses rewrite-fixpoint to normalize nested evals", () => {
       // Pattern for simple eval removal
       const evalPattern: Val = {
         tag: "App",
@@ -416,7 +416,7 @@ describe("Prompt 6: Semantic Program Rewriting", () => {
       expect(conflicts.length).toBe(0);
     });
 
-    it("[P6-6.4c] uses rewrite/conflicts primitive", () => {
+    it("[P6-6.4c] uses rewrite-conflicts primitive", () => {
       // Test conflict detection directly without Omega since we've verified the core logic above
       const norm1Pattern: Val = {
         tag: "App",
@@ -658,11 +658,11 @@ describe("Prompt 6: Semantic Program Rewriting", () => {
       expect((result as any).tag).toBe("Rule");
     });
 
-    it("[P6-6.7d] applies rewrite/fixpoint from Omega", async () => {
-      // Test rewrite/fixpoint returns a Map with result
+    it("[P6-6.7d] applies rewrite-fixpoint from Omega", async () => {
+      // Test rewrite-fixpoint returns a Map with result
       const result = await runOmega(`
         (let ((rules (list (make-rule 'r '(Num (n 1)) '(Num (n 2))))))
-          (rewrite/fixpoint rules '(Num (n 1)) 10))
+          (rewrite-fixpoint rules '(Num (n 1)) 10))
       `);
       // Result is a Map
       expect(result.tag).toBe("Map");
@@ -686,20 +686,20 @@ describe("Prompt 6: Semantic Program Rewriting", () => {
       expect((result as any).tag).toBe("Rule");
     });
 
-    it("rewrite/once applies single rule", async () => {
-      // Test rewrite/once returns a pair on success
+    it("rewrite-once applies single rule", async () => {
+      // Test rewrite-once returns a pair on success
       const result = await runOmega(`
         (let ((r (make-rule 'double '(Num (n 5)) '(Num (n 10)))))
-          (rewrite/once r '(Num (n 5))))
+          (rewrite-once r '(Num (n 5))))
       `);
       // On success, returns a Vector (pair)
       expect(result.tag).toBe("Vector");
     });
 
-    it("rewrite/trace returns list", async () => {
+    it("rewrite-trace returns list", async () => {
       const result = await runOmega(`
         (let ((rules (list (make-rule 'r '(Num (n 1)) '(Num (n 2))))))
-          (rewrite/trace rules '(Num (n 1)) 10))
+          (rewrite-trace rules '(Num (n 1)) 10))
       `);
       // Returns a list (Vector cons cells or Unit)
       expect(result.tag === "Vector" || result.tag === "Unit").toBe(true);

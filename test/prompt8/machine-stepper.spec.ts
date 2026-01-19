@@ -17,11 +17,11 @@ import type { Expr } from "../../src/core/ast";
 // ─────────────────────────────────────────────────────────────────
 
 describe("Test 8.1: Machine stepper stops on infer.op", () => {
-  it("machine/new creates a Machine value", () => {
+  it("machine-new creates a Machine value", () => {
     const store = new COWStore();
     const { env, store: store2 } = installPrims(store);
 
-    // Create a state to simulate running (machine/new 42)
+    // Create a state to simulate running (machine-new 42)
     const state: any = {
       control: { tag: "Val", v: { tag: "Num", n: 42 } },
       env,
@@ -45,7 +45,7 @@ describe("Test 8.1: Machine stepper stops on infer.op", () => {
     expect(machineVal.isDone).toBe(false);
   });
 
-  it("machine/step advances the machine state", () => {
+  it("machine-step advances the machine state", () => {
     const store = new COWStore();
     const { env, store: store2 } = installPrims(store);
 
@@ -78,7 +78,7 @@ describe("Test 8.1: Machine stepper stops on infer.op", () => {
     expect(outcome2.value.n).toBe(42);
   });
 
-  it("machine/run with breakpoint stops on effect", () => {
+  it("machine-run with breakpoint stops on effect", () => {
     const store = new COWStore();
     const { env, store: store2 } = installPrims(store);
 
@@ -126,7 +126,7 @@ describe("Test 8.1: Machine stepper stops on infer.op", () => {
 // ─────────────────────────────────────────────────────────────────
 
 describe("Test 8.2: Breakpoint on AST pattern", () => {
-  it("machine/add-breakpoint adds effect breakpoint", () => {
+  it("machine-add-breakpoint adds effect breakpoint", () => {
     const machine: MachineVal = {
       tag: "Machine",
       state: {} as any,
@@ -359,7 +359,7 @@ describe("Test 8.5: Hoist normalization improves cache hits", () => {
 // ─────────────────────────────────────────────────────────────────
 
 describe("Test 8.6: Multi-shot fork comparison", () => {
-  it("machine/fork creates independent copy", () => {
+  it("machine-fork creates independent copy", () => {
     const original: MachineVal = {
       tag: "Machine",
       state: {
@@ -416,7 +416,7 @@ describe("Test 8.6: Multi-shot fork comparison", () => {
     expect(m2.stepCount).toBe(0);
   });
 
-  it("machine/resume continues with provided value", () => {
+  it("machine-resume continues with provided value", () => {
     const machine: MachineVal = {
       tag: "Machine",
       state: {

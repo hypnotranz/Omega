@@ -83,7 +83,7 @@ function initialEnv(moduleScope: string): Env {
     // Logic
     "not",
     // Special values
-    "unit", "__uninit",
+    "unit", "*uninit*",
     // List operations
     "cons", "car", "cdr", "null?", "pair?", "list", "append", "length", "reverse", "list-ref",
     "cadr", "caddr",
@@ -115,11 +115,11 @@ function initialEnv(moduleScope: string): Env {
     "match-pattern", "substitute-template",
     // Rule/rewriting
     "make-rule", "make-rule-where", "rule?",
-    "rewrite/once", "rewrite/fixpoint", "rewrite/trace", "rewrite/conflicts",
+    "rewrite-once", "rewrite-fixpoint", "rewrite-trace", "rewrite-conflicts",
     // Machine introspection (debugging)
-    "machine/new", "machine?", "machine/step", "machine/run", "machine/done?",
-    "machine/value", "machine/control", "machine/stack", "machine/step-count",
-    "machine/fork", "machine/resume", "machine/add-breakpoint", "machine/last-op",
+    "machine-new", "machine?", "machine-step", "machine-run", "machine-done?",
+    "machine-value", "machine-control", "machine-stack", "machine-step-count",
+    "machine-fork", "machine-resume", "machine-add-breakpoint", "machine-last-op",
   ];
   let env: Env = [];
   for (const p of prims) {

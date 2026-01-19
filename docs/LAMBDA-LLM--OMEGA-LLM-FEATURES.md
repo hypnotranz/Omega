@@ -869,7 +869,7 @@ pipeline/       - Compilation pipeline
 | Task | Effort | Impact | Status |
 |------|--------|--------|--------|
 | ~~**Wire production primitives into OmegaRuntime**~~ | Low | **BLOCKING** - Production API is non-functional | ✅ DONE |
-| **Fix OmegaLLM naming conventions** | Medium | High - All stream/nondet functions use wrong names | --- |
+| ~~**[Fix OmegaLLM naming conventions](../CLAUDE-JOBS/002-FIX-PRIMITIVE-NAMING-CONVENTIONS.md)**~~ | Medium | High - 17 primitives renamed to use `-` (SICP-compliant) | ✅ DONE |
 | **Implement full RSR-03 receipt ledger** | Medium | Critical - Provenance/replay foundation | --- |
 
 ### P1: High-Value Ports

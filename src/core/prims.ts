@@ -20,9 +20,9 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     env = envSet(env, name, addr);
   }
 
-  // __uninit: placeholder for letrec uninitialized bindings
+  // *uninit*: placeholder for letrec uninitialized bindings
   // Returns Unit as a placeholder value that will be overwritten by set!
-  def("__uninit", { tag: "Native", name: "__uninit", arity: 0, fn: (_args, s) => {
+  def("*uninit*", { tag: "Native", name: "*uninit*", arity: 0, fn: (_args, s) => {
     return { ...s, control: { tag: "Val", v: VUnit } };
   }});
 
@@ -1843,11 +1843,11 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return rules;
   }
 
-  // rewrite/once: apply rules once at first match
-  // (rewrite/once rules expr) -> expr' or #f if no match
-  // (rewrite/once rules expr 'topdown) -> with strategy
-  def("rewrite/once", { tag: "Native", name: "rewrite/once", arity: "variadic", fn: (args, s) => {
-    if (args.length < 2) throw new Error("rewrite/once: expected (rules expr [strategy])");
+  // rewrite-once: apply rules once at first match
+  // (rewrite-once rules expr) -> expr' or #f if no match
+  // (rewrite-once rules expr 'topdown) -> with strategy
+  def("rewrite-once", { tag: "Native", name: "rewrite-once", arity: "variadic", fn: (args, s) => {
+    if (args.length < 2) throw new Error("rewrite-once: expected (rules expr [strategy])");
 
     const rulesVal = args[0];
     const expr = args[1];
@@ -1874,12 +1874,12 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: VFalse } };
   }});
 
-  // rewrite/fixpoint: apply rules until no more changes or fuel exhausted
-  // (rewrite/fixpoint rules expr) -> expr'
-  // (rewrite/fixpoint rules expr fuel) -> with fuel limit
-  // (rewrite/fixpoint rules expr fuel 'bottomup) -> with strategy
-  def("rewrite/fixpoint", { tag: "Native", name: "rewrite/fixpoint", arity: "variadic", fn: (args, s) => {
-    if (args.length < 2) throw new Error("rewrite/fixpoint: expected (rules expr [fuel] [strategy])");
+  // rewrite-fixpoint: apply rules until no more changes or fuel exhausted
+  // (rewrite-fixpoint rules expr) -> expr'
+  // (rewrite-fixpoint rules expr fuel) -> with fuel limit
+  // (rewrite-fixpoint rules expr fuel 'bottomup) -> with strategy
+  def("rewrite-fixpoint", { tag: "Native", name: "rewrite-fixpoint", arity: "variadic", fn: (args, s) => {
+    if (args.length < 2) throw new Error("rewrite-fixpoint: expected (rules expr [fuel] [strategy])");
 
     const rulesVal = args[0];
     const expr = args[1];
@@ -1906,10 +1906,10 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: resultVal } };
   }});
 
-  // rewrite/trace: apply rules and return full trace
-  // (rewrite/trace rules expr) -> list of intermediate expressions
-  def("rewrite/trace", { tag: "Native", name: "rewrite/trace", arity: "variadic", fn: (args, s) => {
-    if (args.length < 2) throw new Error("rewrite/trace: expected (rules expr [fuel] [strategy])");
+  // rewrite-trace: apply rules and return full trace
+  // (rewrite-trace rules expr) -> list of intermediate expressions
+  def("rewrite-trace", { tag: "Native", name: "rewrite-trace", arity: "variadic", fn: (args, s) => {
+    if (args.length < 2) throw new Error("rewrite-trace: expected (rules expr [fuel] [strategy])");
 
     const rulesVal = args[0];
     const expr = args[1];
@@ -1941,9 +1941,9 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: traceList } };
   }});
 
-  // rewrite/conflicts: detect potential non-confluence in rules
-  // (rewrite/conflicts rules) -> list of conflict reports
-  def("rewrite/conflicts", { tag: "Native", name: "rewrite/conflicts", arity: 1, fn: (args, s) => {
+  // rewrite-conflicts: detect potential non-confluence in rules
+  // (rewrite-conflicts rules) -> list of conflict reports
+  def("rewrite-conflicts", { tag: "Native", name: "rewrite-conflicts", arity: 1, fn: (args, s) => {
     const rulesVal = args[0];
     const rules = valListToRules(rulesVal);
 
@@ -2012,11 +2012,11 @@ export function installPrims(store: Store): { env: Env; store: Store } {
   // These enable stepping, forking, breakpoints, and time-travel debugging
   // ─────────────────────────────────────────────────────────────────
 
-  // machine/new: Create a reified machine from an expression
-  // (machine/new expr) -> Machine
-  // (machine/new expr label) -> Machine with label
-  def("machine/new", { tag: "Native", name: "machine/new", arity: "variadic", fn: (args, s) => {
-    if (args.length < 1) throw new Error("machine/new: expected at least 1 argument");
+  // machine-new: Create a reified machine from an expression
+  // (machine-new expr) -> Machine
+  // (machine-new expr label) -> Machine with label
+  def("machine-new", { tag: "Native", name: "machine-new", arity: "variadic", fn: (args, s) => {
+    if (args.length < 1) throw new Error("machine-new: expected at least 1 argument");
     const exprVal = args[0];
     const label = args.length > 1 && args[1].tag === "Str" ? args[1].s : undefined;
 
@@ -2045,11 +2045,11 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: machineVal } };
   }});
 
-  // machine/step: Single-step a machine
-  // (machine/step machine) -> Machine (updated)
-  def("machine/step", { tag: "Native", name: "machine/step", arity: 1, fn: (args, s) => {
+  // machine-step: Single-step a machine
+  // (machine-step machine) -> Machine (updated)
+  def("machine-step", { tag: "Native", name: "machine-step", arity: 1, fn: (args, s) => {
     const m = args[0] as any;
-    if (m.tag !== "Machine") throw new Error("machine/step: expected Machine");
+    if (m.tag !== "Machine") throw new Error("machine-step: expected Machine");
     if (m.isDone) {
       // Already done - return as-is
       return { ...s, control: { tag: "Val", v: m } };
@@ -2072,13 +2072,13 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: updated } };
   }});
 
-  // machine/run: Run machine to completion or breakpoint
-  // (machine/run machine) -> Machine
-  // (machine/run machine max-steps) -> Machine
-  def("machine/run", { tag: "Native", name: "machine/run", arity: "variadic", fn: (args, s) => {
-    if (args.length < 1) throw new Error("machine/run: expected at least 1 argument");
+  // machine-run: Run machine to completion or breakpoint
+  // (machine-run machine) -> Machine
+  // (machine-run machine max-steps) -> Machine
+  def("machine-run", { tag: "Native", name: "machine-run", arity: "variadic", fn: (args, s) => {
+    if (args.length < 1) throw new Error("machine-run: expected at least 1 argument");
     const m = args[0] as any;
-    if (m.tag !== "Machine") throw new Error("machine/run: expected Machine");
+    if (m.tag !== "Machine") throw new Error("machine-run: expected Machine");
     if (m.isDone) return { ...s, control: { tag: "Val", v: m } };
 
     const maxSteps = args.length > 1 && args[1].tag === "Num" ? args[1].n : 10000;
@@ -2119,11 +2119,11 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: current } };
   }});
 
-  // machine/stack: Get the continuation stack as a list
-  // (machine/stack machine) -> list of frame descriptions
-  def("machine/stack", { tag: "Native", name: "machine/stack", arity: 1, fn: (args, s) => {
+  // machine-stack: Get the continuation stack as a list
+  // (machine-stack machine) -> list of frame descriptions
+  def("machine-stack", { tag: "Native", name: "machine-stack", arity: 1, fn: (args, s) => {
     const m = args[0] as any;
-    if (m.tag !== "Machine") throw new Error("machine/stack: expected Machine");
+    if (m.tag !== "Machine") throw new Error("machine-stack: expected Machine");
 
     // Convert kont frames to list of symbols describing them
     const frames = m.state.kont || [];
@@ -2137,11 +2137,11 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: result } };
   }});
 
-  // machine/control: Get the current control value
-  // (machine/control machine) -> control (Expr or Val)
-  def("machine/control", { tag: "Native", name: "machine/control", arity: 1, fn: (args, s) => {
+  // machine-control: Get the current control value
+  // (machine-control machine) -> control (Expr or Val)
+  def("machine-control", { tag: "Native", name: "machine-control", arity: 1, fn: (args, s) => {
     const m = args[0] as any;
-    if (m.tag !== "Machine") throw new Error("machine/control: expected Machine");
+    if (m.tag !== "Machine") throw new Error("machine-control: expected Machine");
 
     const ctrl = m.state.control;
     if (ctrl.tag === "Val") {
@@ -2151,20 +2151,20 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: { tag: "Sym", name: `Expr:${ctrl.e.tag}` } } };
   }});
 
-  // machine/done?: Check if machine is in terminal state
-  // (machine/done? machine) -> boolean
-  def("machine/done?", { tag: "Native", name: "machine/done?", arity: 1, fn: (args, s) => {
+  // machine-done?: Check if machine is in terminal state
+  // (machine-done? machine) -> boolean
+  def("machine-done?", { tag: "Native", name: "machine-done?", arity: 1, fn: (args, s) => {
     const m = args[0] as any;
-    if (m.tag !== "Machine") throw new Error("machine/done?: expected Machine");
+    if (m.tag !== "Machine") throw new Error("machine-done?: expected Machine");
     return { ...s, control: { tag: "Val", v: m.isDone ? VTrue : VFalse } };
   }});
 
-  // machine/value: Get the final value (if done)
-  // (machine/value machine) -> value or error
-  def("machine/value", { tag: "Native", name: "machine/value", arity: 1, fn: (args, s) => {
+  // machine-value: Get the final value (if done)
+  // (machine-value machine) -> value or error
+  def("machine-value", { tag: "Native", name: "machine-value", arity: 1, fn: (args, s) => {
     const m = args[0] as any;
-    if (m.tag !== "Machine") throw new Error("machine/value: expected Machine");
-    if (!m.isDone) throw new Error("machine/value: machine not done");
+    if (m.tag !== "Machine") throw new Error("machine-value: expected Machine");
+    if (!m.isDone) throw new Error("machine-value: machine not done");
 
     if (m.lastOutcome?.tag === "Done") {
       return { ...s, control: { tag: "Val", v: m.lastOutcome.value } };
@@ -2172,16 +2172,16 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     if (m.state.control.tag === "Val") {
       return { ...s, control: { tag: "Val", v: m.state.control.v } };
     }
-    throw new Error("machine/value: no value available");
+    throw new Error("machine-value: no value available");
   }});
 
-  // machine/fork: Clone a machine for multi-shot exploration
-  // (machine/fork machine) -> new Machine
-  // (machine/fork machine label) -> new Machine with label
-  def("machine/fork", { tag: "Native", name: "machine/fork", arity: "variadic", fn: (args, s) => {
-    if (args.length < 1) throw new Error("machine/fork: expected at least 1 argument");
+  // machine-fork: Clone a machine for multi-shot exploration
+  // (machine-fork machine) -> new Machine
+  // (machine-fork machine label) -> new Machine with label
+  def("machine-fork", { tag: "Native", name: "machine-fork", arity: "variadic", fn: (args, s) => {
+    if (args.length < 1) throw new Error("machine-fork: expected at least 1 argument");
     const m = args[0] as any;
-    if (m.tag !== "Machine") throw new Error("machine/fork: expected Machine");
+    if (m.tag !== "Machine") throw new Error("machine-fork: expected Machine");
     const label = args.length > 1 && args[1].tag === "Str" ? args[1].s : undefined;
 
     const newId = `m${Date.now().toString(16)}${Math.random().toString(16).slice(2, 6)}`;
@@ -2202,12 +2202,12 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: forked } };
   }});
 
-  // machine/resume: Resume a machine from an effect with a value
-  // (machine/resume machine value) -> Machine
-  def("machine/resume", { tag: "Native", name: "machine/resume", arity: 2, fn: (args, s) => {
+  // machine-resume: Resume a machine from an effect with a value
+  // (machine-resume machine value) -> Machine
+  def("machine-resume", { tag: "Native", name: "machine-resume", arity: 2, fn: (args, s) => {
     const m = args[0] as any;
     const value = args[1];
-    if (m.tag !== "Machine") throw new Error("machine/resume: expected Machine");
+    if (m.tag !== "Machine") throw new Error("machine-resume: expected Machine");
 
     // Set the control to the provided value and clear effect state
     const resumed: Val = {
@@ -2222,14 +2222,14 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: resumed } };
   }});
 
-  // machine/add-breakpoint: Add an effect breakpoint
-  // (machine/add-breakpoint machine op-name) -> Machine
-  def("machine/add-breakpoint", { tag: "Native", name: "machine/add-breakpoint", arity: 2, fn: (args, s) => {
+  // machine-add-breakpoint: Add an effect breakpoint
+  // (machine-add-breakpoint machine op-name) -> Machine
+  def("machine-add-breakpoint", { tag: "Native", name: "machine-add-breakpoint", arity: 2, fn: (args, s) => {
     const m = args[0] as any;
     const opName = args[1] as any;
-    if (m.tag !== "Machine") throw new Error("machine/add-breakpoint: expected Machine");
+    if (m.tag !== "Machine") throw new Error("machine-add-breakpoint: expected Machine");
     if (opName.tag !== "Str" && opName.tag !== "Sym") {
-      throw new Error("machine/add-breakpoint: op-name must be string or symbol");
+      throw new Error("machine-add-breakpoint: op-name must be string or symbol");
     }
 
     const name = opName.tag === "Str" ? opName.s : opName.name;
@@ -2244,19 +2244,19 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: updated } };
   }});
 
-  // machine/step-count: Get the step count
-  // (machine/step-count machine) -> number
-  def("machine/step-count", { tag: "Native", name: "machine/step-count", arity: 1, fn: (args, s) => {
+  // machine-step-count: Get the step count
+  // (machine-step-count machine) -> number
+  def("machine-step-count", { tag: "Native", name: "machine-step-count", arity: 1, fn: (args, s) => {
     const m = args[0] as any;
-    if (m.tag !== "Machine") throw new Error("machine/step-count: expected Machine");
+    if (m.tag !== "Machine") throw new Error("machine-step-count: expected Machine");
     return { ...s, control: { tag: "Val", v: { tag: "Num", n: m.stepCount } } };
   }});
 
-  // machine/last-op: Get the last operation (if any)
-  // (machine/last-op machine) -> op-name or #f
-  def("machine/last-op", { tag: "Native", name: "machine/last-op", arity: 1, fn: (args, s) => {
+  // machine-last-op: Get the last operation (if any)
+  // (machine-last-op machine) -> op-name or #f
+  def("machine-last-op", { tag: "Native", name: "machine-last-op", arity: 1, fn: (args, s) => {
     const m = args[0] as any;
-    if (m.tag !== "Machine") throw new Error("machine/last-op: expected Machine");
+    if (m.tag !== "Machine") throw new Error("machine-last-op: expected Machine");
 
     if (m.lastOutcome?.tag === "Op") {
       return { ...s, control: { tag: "Val", v: { tag: "Sym", name: m.lastOutcome.opcall.op } } };

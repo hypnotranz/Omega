@@ -124,7 +124,7 @@ export function lowerSyntax(stx: Syntax, env: Env, phase = 0): Expr {
 
         const params = bindPairs.map(p => p.internal);
 
-        const placeholder: Expr = { tag: "App", fn: { tag: "Var", name: "__uninit" }, args: [] };
+        const placeholder: Expr = { tag: "App", fn: { tag: "Var", name: "*uninit*" }, args: [] };
         const args = bindPairs.map(_ => placeholder);
 
         const sets: Expr[] = bindPairs.map(p => ({ tag: "Set", name: p.internal, rhs: p.init }));
