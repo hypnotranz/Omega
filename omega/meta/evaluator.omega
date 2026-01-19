@@ -1,0 +1,418 @@
+;; omega/meta/evaluator.omega
+;; SOURCE: ARCHITECTURE/32-LANGUAGE-OFFICIAL-13-IMPLEMENTATION-17.md
+;; Prompt 7: Metacircular Evaluator for Omega
+;;
+;; A metacircular evaluator written in Omega that can interpret itself.
+;; Key features:
+;; - Explicit environment model (message-passing objects)
+;; - Programmable eval/apply via hooks (Metaobject Protocol)
+;; - Supports OracleProcs as primitive procedures
+;; - Semantic functions are first-class primitives
+
+;; ═══════════════════════════════════════════════════════════════════════════
+;; 1. Meta-Environment: Message-passing object model (SICP style)
+;; ═══════════════════════════════════════════════════════════════════════════
+
+;; Create a new meta-environment
+(define (make-menv parent)
+  ;; Frame is an association list: ((sym . val) ...)
+  (let ((frame '()))
+
+    ;; Lookup helper for alists
+    (define (alist-get sym al)
+      (cond
+        ((null? al) #f)
+        ((eq? (car (car al)) sym) (cdr (car al)))
+        (else (alist-get sym (cdr al)))))
+
+    ;; Define a new binding in this frame
+    (define (define! sym val)
+      (set! frame (cons (cons sym val) frame))
+      'unit)
+
+    ;; Set an existing binding (searches parent chain)
+    (define (set-binding! sym val)
+      (let ((v (alist-get sym frame)))
+        (if v
+            (define! sym val)  ; shadow in current frame
+            (if parent
+                (parent 'set! sym val)
+                (error "set!: unbound variable" sym)))))
+
+    ;; Lookup a binding
+    (define (lookup sym)
+      (let ((v (alist-get sym frame)))
+        (if v
+            v
+            (if parent
+                (parent 'lookup sym)
+                (error "unbound variable" sym)))))
+
+    ;; Extend with new parameter bindings
+    (define (extend params args)
+      (let ((child (make-menv (lambda (msg . xs)
+                                (menv-dispatch msg xs)))))
+        ;; Bind params to args in child
+        (define (bind-loop ps as)
+          (if (null? ps)
+              'done
+              (begin
+                (child 'define! (car ps) (car as))
+                (bind-loop (cdr ps) (cdr as)))))
+        (bind-loop params args)
+        child))
+
+    ;; Export frame for inspection
+    (define (export-frame) frame)
+
+    ;; Message dispatcher
+    (define (menv-dispatch msg args)
+      (cond
+        ((eq? msg 'lookup)  (lookup (car args)))
+        ((eq? msg 'define!) (define! (car args) (cadr args)))
+        ((eq? msg 'set!)    (set-binding! (car args) (cadr args)))
+        ((eq? msg 'extend)  (extend (car args) (cadr args)))
+        ((eq? msg 'export)  (export-frame))
+        (else (error "unknown menv message" msg))))
+
+    ;; Return the dispatch function
+    (lambda (msg . args)
+      (menv-dispatch msg args))))
+
+;; ═══════════════════════════════════════════════════════════════════════════
+;; 2. Meta-level Procedure Representations
+;; ═══════════════════════════════════════════════════════════════════════════
+
+;; Compound procedure (closure in the object language)
+(define (make-mclosure params body env)
+  (list 'mclosure params body env))
+
+(define (mclosure? x)
+  (and (pair? x) (eq? (car x) 'mclosure)))
+
+(define (mclosure-params mc) (cadr mc))
+(define (mclosure-body mc) (caddr mc))
+(define (mclosure-env mc) (cadddr mc))
+
+;; Primitive procedure (host procedure wrapped for meta-level)
+(define (make-mprim proc)
+  (list 'mprim proc))
+
+(define (mprim? x)
+  (and (pair? x) (eq? (car x) 'mprim)))
+
+(define (mprim-impl mp) (cadr mp))
+
+;; ═══════════════════════════════════════════════════════════════════════════
+;; 3. Expression Predicates and Accessors
+;; ═══════════════════════════════════════════════════════════════════════════
+
+(define (self-evaluating? exp)
+  (or (number? exp)
+      (string? exp)
+      (boolean? exp)))
+
+(define (quoted? exp)
+  (and (pair? exp) (eq? (car exp) 'quote)))
+
+(define (quote-text exp) (cadr exp))
+
+(define (lambda? exp)
+  (and (pair? exp) (eq? (car exp) 'lambda)))
+
+(define (lambda-params exp) (cadr exp))
+(define (lambda-body exp) (cddr exp))
+
+(define (if? exp)
+  (and (pair? exp) (eq? (car exp) 'if)))
+
+(define (if-pred exp) (cadr exp))
+(define (if-cons exp) (caddr exp))
+(define (if-alt exp)
+  (if (null? (cdddr exp))
+      ''unit
+      (cadddr exp)))
+
+(define (begin? exp)
+  (and (pair? exp) (eq? (car exp) 'begin)))
+
+(define (begin-actions exp) (cdr exp))
+
+(define (define? exp)
+  (and (pair? exp) (eq? (car exp) 'define)))
+
+(define (define-name exp)
+  (if (pair? (cadr exp))
+      (car (cadr exp))    ; (define (f x) body)
+      (cadr exp)))        ; (define x expr)
+
+(define (define-value exp)
+  (if (pair? (cadr exp))
+      ;; (define (f x) body) -> (lambda (x) body)
+      (cons 'lambda (cons (cdr (cadr exp)) (cddr exp)))
+      ;; (define x expr)
+      (caddr exp)))
+
+(define (set!? exp)
+  (and (pair? exp) (eq? (car exp) 'set!)))
+
+(define (set-name exp) (cadr exp))
+(define (set-value exp) (caddr exp))
+
+(define (let? exp)
+  (and (pair? exp) (eq? (car exp) 'let)))
+
+(define (application? exp)
+  (pair? exp))
+
+(define (operator exp) (car exp))
+(define (operands exp) (cdr exp))
+
+;; ═══════════════════════════════════════════════════════════════════════════
+;; 4. Programmable Evaluator with Hooks (MOP)
+;; ═══════════════════════════════════════════════════════════════════════════
+
+;; Create a hooks object for the evaluator
+(define (make-hooks)
+  (let ((on-eval-enter #f)
+        (on-eval-exit #f)
+        (on-apply-enter #f)
+        (on-apply-exit #f))
+    (lambda (msg . args)
+      (cond
+        ((eq? msg 'get-eval-enter) on-eval-enter)
+        ((eq? msg 'set-eval-enter!) (set! on-eval-enter (car args)))
+        ((eq? msg 'get-eval-exit) on-eval-exit)
+        ((eq? msg 'set-eval-exit!) (set! on-eval-exit (car args)))
+        ((eq? msg 'get-apply-enter) on-apply-enter)
+        ((eq? msg 'set-apply-enter!) (set! on-apply-enter (car args)))
+        ((eq? msg 'get-apply-exit) on-apply-exit)
+        ((eq? msg 'set-apply-exit!) (set! on-apply-exit (car args)))
+        (else #f)))))
+
+;; Create an evaluator with configurable hooks
+(define (make-evaluator hooks)
+  (letrec
+    ;; Evaluate a sequence of expressions, return last value
+    ((eval-seq
+       (lambda (exps env)
+         (if (null? (cdr exps))
+             (evalm (car exps) env)
+             (begin
+               (evalm (car exps) env)
+               (eval-seq (cdr exps) env)))))
+
+     ;; Evaluate a list of operands
+     (list-of-values
+       (lambda (exps env)
+         (if (null? exps)
+             '()
+             (cons (evalm (car exps) env)
+                   (list-of-values (cdr exps) env)))))
+
+     ;; Main eval function
+     (evalm
+       (lambda (exp env)
+         ;; Call enter hook if present
+         (let ((enter-hook (hooks 'get-eval-enter)))
+           (if enter-hook (enter-hook exp env) 'unit))
+
+         (let ((result
+           (cond
+             ;; Self-evaluating: numbers, strings, booleans
+             ((self-evaluating? exp) exp)
+
+             ;; Symbol: lookup in environment
+             ((symbol? exp) (env 'lookup exp))
+
+             ;; Quote
+             ((quoted? exp) (quote-text exp))
+
+             ;; Lambda: create closure
+             ((lambda? exp)
+              (make-mclosure (lambda-params exp)
+                             (lambda-body exp)
+                             env))
+
+             ;; If
+             ((if? exp)
+              (if (evalm (if-pred exp) env)
+                  (evalm (if-cons exp) env)
+                  (evalm (if-alt exp) env)))
+
+             ;; Begin
+             ((begin? exp)
+              (eval-seq (begin-actions exp) env))
+
+             ;; Define
+             ((define? exp)
+              (begin
+                (env 'define! (define-name exp)
+                             (evalm (define-value exp) env))
+                'unit))
+
+             ;; Set!
+             ((set!? exp)
+              (begin
+                (env 'set! (set-name exp)
+                          (evalm (set-value exp) env))
+                'unit))
+
+             ;; Let: transform to lambda application
+             ((let? exp)
+              (let ((bindings (cadr exp))
+                    (body (cddr exp)))
+                (let ((names (map car bindings))
+                      (vals (map cadr bindings)))
+                  (evalm (cons (cons 'lambda (cons names body))
+                              vals)
+                        env))))
+
+             ;; Application
+             ((application? exp)
+              (applym (evalm (operator exp) env)
+                      (list-of-values (operands exp) env)))
+
+             (else (error "unknown expression type" exp)))))
+
+           ;; Call exit hook if present
+           (let ((exit-hook (hooks 'get-eval-exit)))
+             (if exit-hook (exit-hook exp env result) 'unit))
+
+           result)))
+
+     ;; Apply function
+     (applym
+       (lambda (proc args)
+         ;; Call enter hook if present
+         (let ((enter-hook (hooks 'get-apply-enter)))
+           (if enter-hook (enter-hook proc args) 'unit))
+
+         (let ((result
+           (cond
+             ;; Meta primitive (wrapped host procedure)
+             ((mprim? proc)
+              (apply (mprim-impl proc) args))
+
+             ;; Meta closure
+             ((mclosure? proc)
+              (let ((extended-env
+                      ((mclosure-env proc) 'extend
+                                           (mclosure-params proc)
+                                           args)))
+                (eval-seq (mclosure-body proc) extended-env)))
+
+             ;; Host procedure (Native, Closure, or OracleProc from Omega)
+             ;; These are first-class primitives in the object language
+             ((procedure? proc)
+              (apply proc args))
+
+             (else (error "cannot apply" proc)))))
+
+           ;; Call exit hook if present
+           (let ((exit-hook (hooks 'get-apply-exit)))
+             (if exit-hook (exit-hook proc args result) 'unit))
+
+           result))))
+
+    ;; Return the evaluator as a message-passing object
+    (lambda (msg)
+      (cond
+        ((eq? msg 'eval) evalm)
+        ((eq? msg 'apply) applym)
+        (else (error "unknown evaluator message" msg))))))
+
+;; ═══════════════════════════════════════════════════════════════════════════
+;; 5. Default Evaluator (no hooks)
+;; ═══════════════════════════════════════════════════════════════════════════
+
+(define default-hooks (make-hooks))
+(define default-evaluator (make-evaluator default-hooks))
+
+;; Convenience functions
+(define (meta-eval exp env)
+  ((default-evaluator 'eval) exp env))
+
+(define (meta-apply proc args)
+  ((default-evaluator 'apply) proc args))
+
+;; ═══════════════════════════════════════════════════════════════════════════
+;; 6. Initial Environment with Semantic Primitives
+;; ═══════════════════════════════════════════════════════════════════════════
+
+(define (setup-initial-env)
+  (let ((env (make-menv #f)))
+    ;; Basic primitives
+    (env 'define! '+ (make-mprim +))
+    (env 'define! '- (make-mprim -))
+    (env 'define! '* (make-mprim *))
+    (env 'define! '/ (make-mprim /))
+    (env 'define! '= (make-mprim =))
+    (env 'define! '< (make-mprim <))
+    (env 'define! '> (make-mprim >))
+    (env 'define! 'eq? (make-mprim eq?))
+    (env 'define! 'null? (make-mprim null?))
+    (env 'define! 'pair? (make-mprim pair?))
+    (env 'define! 'number? (make-mprim number?))
+    (env 'define! 'symbol? (make-mprim symbol?))
+    (env 'define! 'string? (make-mprim string?))
+    (env 'define! 'cons (make-mprim cons))
+    (env 'define! 'car (make-mprim car))
+    (env 'define! 'cdr (make-mprim cdr))
+    (env 'define! 'list (make-mprim list))
+    (env 'define! 'not (make-mprim not))
+    (env 'define! 'display (make-mprim display))
+    (env 'define! 'newline (make-mprim newline))
+
+    ;; String operations
+    (env 'define! 'string-append (make-mprim string-append))
+    (env 'define! 'string-length (make-mprim string-length))
+    (env 'define! 'string->list (make-mprim string->list))
+    (env 'define! 'list->string (make-mprim list->string))
+
+    ;; List operations
+    (env 'define! 'map (make-mprim map))
+    (env 'define! 'filter (make-mprim filter))
+    (env 'define! 'fold (make-mprim fold))
+    (env 'define! 'length (make-mprim length))
+    (env 'define! 'append (make-mprim append))
+    (env 'define! 'reverse (make-mprim reverse))
+
+    ;; Apply is crucial for metacircular work
+    (env 'define! 'apply (make-mprim apply))
+
+    env))
+
+;; ═══════════════════════════════════════════════════════════════════════════
+;; 7. Tracing Evaluator (demonstrates MOP/hooks)
+;; ═══════════════════════════════════════════════════════════════════════════
+
+(define (make-tracing-evaluator trace-log)
+  (let ((hooks (make-hooks)))
+    ;; Install tracing hooks
+    (hooks 'set-eval-enter!
+      (lambda (exp env)
+        (set! trace-log
+          (append trace-log
+                  (list (list 'eval-enter
+                              (if (pair? exp) (car exp) exp)))))))
+
+    (hooks 'set-apply-enter!
+      (lambda (proc args)
+        (set! trace-log
+          (append trace-log
+                  (list (list 'apply-enter
+                              (if (mclosure? proc) 'closure
+                                  (if (mprim? proc) 'primitive
+                                      'host-proc))))))))
+
+    (make-evaluator hooks)))
+
+;; Export public interface
+'(make-menv
+  make-mclosure mclosure? mclosure-params mclosure-body mclosure-env
+  make-mprim mprim? mprim-impl
+  make-hooks make-evaluator
+  default-evaluator meta-eval meta-apply
+  setup-initial-env
+  make-tracing-evaluator)

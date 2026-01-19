@@ -1,0 +1,53 @@
+{
+  "name": "omega-llm",
+  "version": "0.1.0",
+  "description": "Omega Language - Lisp dialect with intensional semantics for AI agent orchestration",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts"
+    },
+    "./adapters": {
+      "import": "./dist/src/core/oracle/adapters/index.js",
+      "types": "./dist/src/core/oracle/adapters/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "omega": "node dist/src/core/cli/omega.js",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "lisp",
+    "llm",
+    "ai",
+    "agent",
+    "oracle",
+    "intensional",
+    "semantics",
+    "mcp",
+    "anthropic"
+  ],
+  "devDependencies": {
+    "@types/node": "^25.0.9",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.20.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": {
+      "optional": true
+    }
+  }
+}
