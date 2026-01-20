@@ -24,3 +24,5 @@ Thumbs.db
 
 # Test artifacts
 coverage/
+__pycache__/
+*.pyc
