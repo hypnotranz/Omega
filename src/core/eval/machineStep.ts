@@ -206,6 +206,25 @@ function applyVal(fnVal: Val, args: Val[], st: State): StepOutcome {
     };
   }
 
+  // First-class continuation (call/cc, prompts)
+  if (fnVal.tag === "Continuation") {
+    if (args.length !== 1) {
+      throw new Error(`Continuation apply arity mismatch: expected 1, got ${args.length}`);
+    }
+    return {
+      tag: "State",
+      state: {
+        ...st,
+        control: { tag: "Val", v: args[0] },
+        env: fnVal.env,
+        // Use the current store to preserve mutations performed before invoking the continuation.
+        store: st.store,
+        kont: fnVal.kont.slice(),
+        handlers: fnVal.handlers.slice(),
+      },
+    };
+  }
+
   // Native function: host-implemented (primitives, etc.)
   if (fnVal.tag === "Native") {
     return { tag: "State", state: fnVal.fn(args, st) };
@@ -477,6 +496,20 @@ function applyFrame(fr: Frame, v: Val, st: State): StepOutcome {
         env: fr.env,
       };
       return { tag: "State", state: { ...st, control: { tag: "Val", v: oracleProc } } };
+    }
+
+    case "KPrompt": {
+      const handlersTrunc = st.handlers.slice(0, fr.savedHandlersDepth);
+      return {
+        tag: "State",
+        state: {
+          ...st,
+          control: { tag: "Val", v },
+          env: fr.env,
+          kont: fr.savedKont,
+          handlers: handlersTrunc,
+        },
+      };
     }
 
     default: {

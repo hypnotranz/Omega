@@ -2,8 +2,10 @@
 
 > **Purpose**: Map every Lisp function/primitive/keyword across all projects with VERIFIED file references.
 >
+> **Audit Status**: ✅ COMPLETE (2026-01-19) - Deep audit of all codebases
+>
 > **Projects**:
-> - **LambdaRLM**: Lisp implementations (~400KB across 28 files in `lib/*.lisp`)
+> - **LambdaRLM**: Lisp implementations (29 files in `lib/*.lisp`) + Python runtime (875+ line evaluator)
 > - **LambdaLLM**: TypeScript specifications (71 ARCHITECTURE/*.md files)
 > - **OmegaLLM**: TypeScript runtime implementation (90+ files in `src/core/`)
 > - **FrameLisp**: Algebraic specification (REFERENCE-ALGEBRA.md)
@@ -14,17 +16,264 @@
 
 | Project | Files | Primary Language | Status | Notes |
 |---------|-------|------------------|--------|-------|
-| **LambdaRLM** | 28 | Lisp | Implemented | Budget, results, streams, nondet, domain algebra |
-| **LambdaLLM** | 71 | TypeScript specs | Specification | Full language spec + enterprise features |
-| **OmegaLLM** | 90+ | TypeScript | Implemented | Eval, streams, nondet, concurrency, constraints, generic dispatch |
+| **LambdaRLM** | 29 Lisp + Python | Lisp + Python | Implemented | Budget, results, streams, nondet, domain algebra, composable solvers |
+| **LambdaLLM** | 71 | TypeScript specs | Specification | Full language spec + enterprise features, **continuations**, evidence-based provenance |
+| **OmegaLLM** | 90+ | TypeScript | Implemented | Eval, streams, nondet, concurrency, constraints, generic dispatch, **CEKS machine introspection** |
 | **FrameLisp** | 1 | Algebraic spec | Specification | Prompt algebra, combinators |
 
 ### Overlap Analysis
 - **High Overlap**: Streams, Nondeterminism, Budget management
 - **Partial Overlap**: Results/Outcomes, Provenance
-- **Unique to LambdaRLM**: Domain algebra, Meta-search, Composable solvers, Obligations
-- **Unique to OmegaLLM**: Concurrency (fibers/actors), Constraints (propagation), Generic dispatch
-- **Unique to LambdaLLM**: Facts, Fixpoint, Experts, Sessions
+- **Unique to LambdaRLM**: Domain algebra, Meta-search, Composable solvers, Obligations, Repair loops, World abstraction
+- **Unique to OmegaLLM**: Concurrency (fibers/actors), Constraints (propagation), Generic dispatch, **CEKS machine stepping/forking/introspection**
+- **Unique to LambdaLLM**: **First-class continuations (call/cc)**, Facts, Fixpoint, Experts, Sessions, **Evidence-based provenance**, Non-unwinding conditions
+
+---
+
+## 🔑 CORE COMPARISON: What Makes Each System Unique
+
+### OmegaLLM's "Magic": CEKS Machine Introspection
+
+OmegaLLM's unique capability is **full CEKS machine introspection**. You can:
+
+```lisp
+;; Create a machine and pause at any step
+(define m (machine-new '(+ (* 2 3) 4)))
+(machine-step m)           ; Step once - returns new machine state
+(machine-step m)           ; Step again
+(machine-control m)        ; Inspect current control expression
+(machine-stack m)          ; Inspect continuation stack
+(machine-step-count m)     ; How many steps taken?
+
+;; FORK the machine - create alternate execution branch!
+(define m2 (machine-fork m))
+(machine-step m)           ; Original continues
+(machine-step m2)          ; Fork continues separately
+
+;; Run until done or breakpoint
+(machine-add-breakpoint m 'some-expr)
+(machine-run m)
+(machine-done? m)
+(machine-value m)
+```
+
+**Why This Matters**: No other Lisp provides this level of introspection. You can:
+- Debug step-by-step
+- Fork execution at any point for speculative search
+- Replay exact execution paths
+- Build meta-circular debuggers and time-travel debuggers
+
+**Key Files**:
+- [src/core/eval/machine.ts](../src/core/eval/machine.ts) - CEKS machine implementation
+- [src/core/eval/machineStep.ts](../src/core/eval/machineStep.ts) - Single-step execution
+- [src/core/prims.ts](../src/core/prims.ts) - `machine-*` primitives
+
+### LambdaLLM's "Magic": First-Class Continuations + Evidence-Based Provenance
+
+LambdaLLM specifies two critical features neither other system has:
+
+**1. First-Class Continuations (call/cc)**
+```lisp
+;; Full call-with-current-continuation support
+(call/cc (lambda (k)
+  (+ 1 (k 5))))  ; Returns 5, skipping the addition
+```
+
+LambdaLLM's spec (05-CONTINUATIONS.md) defines delimited continuations, prompts, and full reification. OmegaLLM has continuations *internally* in the CEKS machine but doesn't expose them as first-class values to user code.
+
+**2. Evidence-Based Provenance**
+```lisp
+;; Every value carries evidence of how it was derived
+(define answer (oracle-infer "What is 2+2?"))
+(evidence-id answer)       ; => "evidence-abc123"
+(verify-evidence answer)   ; Checks against source
+(evidence-stale? answer)   ; Has source changed?
+```
+
+This prevents hallucination propagation - you can trace any claim back to its source.
+
+**3. Non-Unwinding Conditions**
+Unlike exception systems that unwind the stack, LambdaLLM's condition system lets handlers fix problems and *resume* execution at the error site.
+
+**Key Specs**:
+- [ARCHITECTURE/05-CONTINUATIONS.md](../../../LambdaLLM/ARCHITECTURE/05-CONTINUATIONS.md) - Full continuation semantics
+- [ARCHITECTURE/22-PROVENANCE.md](../../../LambdaLLM/ARCHITECTURE/22-PROVENANCE.md) - Evidence model
+- [ARCHITECTURE/06-CONDITIONS.md](../../../LambdaLLM/ARCHITECTURE/06-CONDITIONS.md) - Non-unwinding conditions
+
+### LambdaRLM's "Magic": Domain Algebra + Composable Solvers + Repair Loops
+
+LambdaRLM's unique strength is **strategic problem solving**:
+
+**1. Domain Algebra** - Formally model problem domains
+```lisp
+(define-sort Problem)
+(define-operation decompose Problem -> (List Problem))
+(define-operation merge (List Solution) -> Solution)
+(algebra-simplify problem)
+(algebra-unify problem1 problem2)
+```
+
+**2. Composable Solvers** - Build solvers from solver combinators
+```lisp
+(define solver (compose-sequential
+                 analyzer-solver
+                 (compose-parallel repair-solver fallback-solver)
+                 validator-solver))
+(solver-solve solver problem budget)
+(solver-estimate solver problem)  ; Cost estimate before running
+```
+
+**3. Repair Loops** - Iterate until constraints satisfied
+```lisp
+(repair-until-valid
+  initial-solution
+  validator
+  repair-fn
+  max-iterations)
+```
+
+**4. World Abstraction** - Pluggable state backends
+- `InMemoryWorld` - Testing
+- `FileWorld` - File-based persistence
+- `StagedWorld` - Transaction-like staging
+
+**Key Files**:
+- [lib/domain_algebra.lisp](../../../LambdaRLM/lib/domain_algebra.lisp) - Algebra primitives
+- [lib/composable.lisp](../../../LambdaRLM/lib/composable.lisp) - Solver composition
+- [lib/repair_loop.lisp](../../../LambdaRLM/lib/repair_loop.lisp) - Repair iteration
+- [src/lambdarlm/eval.py](../../../LambdaRLM/src/lambdarlm/eval.py) - 875-line evaluator (36+ special forms)
+
+---
+
+## 📊 VISUAL ABSTRACTION LAYERS
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  LAYER 5: DOMAIN-SPECIFIC DSLs                                               │
+│  ┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐    │
+│  │ LambdaRLM:          │ │ LambdaLLM:          │ │ OmegaLLM:           │    │
+│  │ • Domain Algebra    │ │ • Experts           │ │ • (extensible)      │    │
+│  │ • Problem Solvers   │ │ • Sessions          │ │                     │    │
+│  │ • Validators        │ │ • Task Envelopes    │ │                     │    │
+│  └─────────────────────┘ └─────────────────────┘ └─────────────────────┘    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  LAYER 4: SEARCH & STRATEGY                                                  │
+│  ┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐    │
+│  │ LambdaRLM:          │ │ LambdaLLM:          │ │ OmegaLLM:           │    │
+│  │ • meta-search       │ │ • (spec only)       │ │ • Frontier kinds    │    │
+│  │ • strategies        │ │                     │ │   (DFS/BFS/Beam)    │    │
+│  │ • beam-select       │ │                     │ │ • Fair scheduling   │    │
+│  │ • composable.lisp   │ │                     │ │ • Job scoring       │    │
+│  │ • repair-loop       │ │                     │ │                     │    │
+│  └─────────────────────┘ └─────────────────────┘ └─────────────────────┘    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  LAYER 3: EFFECTS & CONTROL                                                  │
+│  ┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐    │
+│  │ LambdaRLM:          │ │ LambdaLLM:          │ │ OmegaLLM:           │    │
+│  │ • streams.lisp      │ │ • call/cc (spec)    │ │ • streams/ ✓        │    │
+│  │ • nondet.lisp       │ │ • conditions (spec) │ │ • nondet/ ✓         │    │
+│  │ • budget.lisp       │ │ • budget (spec)     │ │ • concurrency/ ✓    │    │
+│  │ • yield.lisp        │ │                     │ │ • constraints/ ✓    │    │
+│  │ • unit/mzero/mplus  │ │                     │ │ • (missing monadic) │    │
+│  └─────────────────────┘ └─────────────────────┘ └─────────────────────┘    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  LAYER 2: ORACLE & PROVENANCE                                                │
+│  ┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐    │
+│  │ LambdaRLM:          │ │ LambdaLLM:          │ │ OmegaLLM:           │    │
+│  │ • Python LLM calls  │ │ • Evidence model    │ │ • oracle/ ✓         │    │
+│  │ • provenance.lisp   │ │ • ProvenanceGraph   │ │ • receipts.ts ✓     │    │
+│  │                     │ │ • verifyEvidence()  │ │ • portal.ts ✓       │    │
+│  │                     │ │ • EpistemicMode     │ │ • (partial evidence)│    │
+│  └─────────────────────┘ └─────────────────────┘ └─────────────────────┘    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  LAYER 1: EVALUATION CORE                                                    │
+│  ┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐    │
+│  │ LambdaRLM:          │ │ LambdaLLM:          │ │ OmegaLLM:           │    │
+│  │ • eval.py (875 ln)  │ │ • Pure ~200 lines   │ │ • CEKS machine ✓    │    │
+│  │ • 36+ special forms │ │   (spec)            │ │ • machine-step ✓    │    │
+│  │ • NO continuations  │ │ • Full call/cc      │ │ • machine-fork ✓    │    │
+│  │ • World abstraction │ │ • Environment model │ │ • COWStore ✓        │    │
+│  │ • Facts/monotone    │ │                     │ │ • Environments ✓    │    │
+│  └─────────────────────┘ └─────────────────────┘ └─────────────────────┘    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  LAYER 0: PRIMITIVES                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ SICP Standard: cons, car, cdr, list, null?, pair?, append, map,     │    │
+│  │                filter, +, -, *, /, <, <=, =, >=, >, string-append,  │    │
+│  │                symbol?, number?, string?, boolean?, procedure?       │    │
+│  │                                                                      │    │
+│  │ OmegaLLM: 117 primitives in src/core/prims.ts ✓                     │    │
+│  │ LambdaRLM: Inherits from Python + custom Lisp                       │    │
+│  │ LambdaLLM: Specified in 14-STDLIB.md                                │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+LEGEND:
+  ✓  = Implemented
+  (spec) = Specification only
+  (missing) = Gap to fill
+```
+
+---
+
+## 🔄 PORTABILITY ASSESSMENT
+
+### Trivial Ports (Copy with adapter)
+| Feature | From | To | Effort | Notes |
+|---------|------|-----|--------|-------|
+| `stream-interleave` | LambdaRLM | OmegaLLM | **Low** | Fair merge, direct port |
+| `budget-split/allocate` | LambdaRLM | OmegaLLM | **Low** | Simple functions |
+| Results type | LambdaRLM | OmegaLLM | **Low** | success/partial/failure |
+
+### Moderate Ports (Requires adapter layer)
+| Feature | From | To | Effort | Notes |
+|---------|------|-----|--------|-------|
+| `unit/mzero/mplus/bind` | LambdaRLM | OmegaLLM | **Medium** | Need monad interface |
+| Repair loops | LambdaRLM | OmegaLLM | **Medium** | Pattern, not code |
+| Facts/monotone | LambdaRLM Python | OmegaLLM | **Medium** | Need fact store |
+| Fixpoint | LambdaRLM Python | OmegaLLM | **Medium** | Convergence detection |
+
+### Significant Rework
+| Feature | From | To | Effort | Notes |
+|---------|------|-----|--------|-------|
+| Domain Algebra | LambdaRLM | OmegaLLM | **High** | Full rewrite |
+| Meta-search | LambdaRLM | OmegaLLM | **High** | Strategy selection |
+| Composable solvers | LambdaRLM | OmegaLLM | **High** | Architecture pattern |
+| Evidence provenance | LambdaLLM | OmegaLLM | **High** | Evidence model needed |
+| First-class call/cc | LambdaLLM | OmegaLLM | **High** | Core eval change |
+| Experts/Sessions | LambdaLLM | OmegaLLM | **High** | Full implementation |
+
+### Cannot Port (Semantic Mismatch)
+| Feature | Why |
+|---------|-----|
+| LambdaRLM Python evaluator | Different paradigm (monolithic vs CEKS) |
+| LambdaRLM World abstraction | Tied to Python file I/O |
+
+---
+
+## ⚠️ SEMANTIC GAPS
+
+### Gap 1: Continuations
+- **LambdaLLM**: Full `call/cc` support specified
+- **OmegaLLM**: CEKS has continuations internally but NOT exposed to user
+- **LambdaRLM**: No continuation support at all
+- **Impact**: Can't implement non-local control flow patterns
+
+### Gap 2: Evidence Model
+- **LambdaLLM**: Rich evidence with verification, staleness, epistemic modes
+- **OmegaLLM**: Receipts exist but no evidence model
+- **LambdaRLM**: Basic provenance tracking
+- **Impact**: Can't trace claims back to sources, can't prevent hallucination propagation
+
+### Gap 3: Monadic Primitives
+- **LambdaRLM**: Has `unit`, `mzero`, `mplus`, `bind` (List monad)
+- **OmegaLLM**: Has `amb` but no explicit monadic interface
+- **Impact**: Harder to compose nondeterministic computations cleanly
+
+### Gap 4: World Abstraction
+- **LambdaRLM Python**: InMemoryWorld, FileWorld, StagedWorld
+- **OmegaLLM**: COWStore only (in-memory)
+- **Impact**: No pluggable persistence backends
 
 ---
 
@@ -902,23 +1151,267 @@ pipeline/       - Compilation pipeline
 
 | Metric | LambdaRLM | LambdaLLM | OmegaLLM | FrameLisp |
 |--------|-----------|-----------|----------|-----------|
-| **Files** | 28 | 71 | 90+ | 1 |
-| **Language** | Lisp | TS specs | TypeScript | Algebraic |
+| **Files** | 29 Lisp + Python | 71 | 90+ | 1 |
+| **Language** | Lisp + Python | TS specs | TypeScript | Algebraic |
 | **Status** | Impl | Spec | Impl | Spec |
-| **Streams** | Yes | No | Yes (WRONG NAMES) | Spec |
-| **Nondet** | Yes | No | Yes | No |
-| **Concurrency** | Minimal | Spec | Full | No |
-| **Constraints** | No | No | Full | No |
-| **Generic** | No | No | Full | No |
-| **Budget** | Yes | Spec | Yes | Spec |
-| **Domain Algebra** | Yes | No | No | No |
-| **Meta-Search** | Yes | No | No | No |
-| **Facts** | No | Spec | No | No |
-| **Fixpoint** | No | Spec | No | No |
+| **Streams** | Yes | No | Yes ✓ | Spec |
+| **Nondet** | Yes | No | Yes ✓ | No |
+| **Concurrency** | Minimal | Spec | Full ✓ | No |
+| **Constraints** | No | No | Full ✓ | No |
+| **Generic** | No | No | Full ✓ | No |
+| **Budget** | Yes | Spec | Yes ✓ | Spec |
+| **CEKS Introspection** | No | No | **Yes ✓** (unique) | No |
+| **call/cc** | No | **Yes** (spec) | No | No |
+| **Evidence Model** | Partial | **Yes** (spec) | Partial | No |
+| **Domain Algebra** | **Yes** (unique) | No | No | No |
+| **Meta-Search** | **Yes** (unique) | No | No | No |
+| **Composable Solvers** | **Yes** (unique) | No | No | No |
+| **Facts** | Yes (Python) | Spec | No | No |
+| **Fixpoint** | Yes (Python) | Spec | No | No |
 | **Experts** | No | Spec | No | No |
+| **World Abstraction** | **Yes** (unique) | No | No | No |
+
+---
+
+## 📊 SIDE-BY-SIDE: Worklist vs What Already Exists
+
+Before implementing anything, here's what OmegaLLM **already has** vs what's **actually missing**:
+
+### Continuations & Control
+
+| Worklist Item | What OmegaLLM Has | Gap | Effort |
+|---------------|-------------------|-----|--------|
+| **call/cc** | `kont: Frame[]` in CEKS, `machine-fork` clones full state | Need primitive to reify K | **Low (4h)** |
+| **prompt/abort (delimited)** | `KHandleBoundary` with `resumeTo`, `KHandleReturn` mode="resume" | Already works! Add Racket-style API | **Low (2h)** |
+| **shift/reset** | No | Sugar over prompt/abort | **Low (2h)** |
+
+**Verdict**: CEKS already supports resumable continuations via effect handlers. We just need to expose `call/cc` as a primitive.
+
+### Evidence & Provenance
+
+| Worklist Item | What OmegaLLM Has | Gap | Effort |
+|---------------|-------------------|-----|--------|
+| **Evidence types** | `Evidence` type in [meaning.ts](../src/core/oracle/meaning.ts): `TestEvidence`, `NoMatchEvidence`, `EqExtEvidence` | Add `EvidenceId`, staleness | **Low (4h)** |
+| **evidence primitives** | `evidence?: Evidence[]` stored in MeaningVal | Add `evidence-id`, `verify-evidence`, `evidence-stale?` | **Low (4h)** |
+| **ProvenanceGraph** | No | Build DAG of evidence | **Medium (1d)** |
+| **Receipt ledger** | `InMemoryReceiptStore` in [receipts.ts](../src/core/oracle/receipts.ts) | Add persistence, query API | **Medium (1d)** |
+
+**Verdict**: Evidence types exist but aren't exposed as primitives. Receipts exist but need persistence.
+
+### Monadic & Effects
+
+| Worklist Item | What OmegaLLM Has | Gap | Effort |
+|---------------|-------------------|-----|--------|
+| **unit/mzero/mplus/bind** | `amb` effect exists but no monadic interface | Add monad.ts | **Low (4h)** |
+| **stream-interleave** | Just a comment in runtimeImpl.ts | Add actual implementation | **Low (2h)** |
+| **budget-split/allocate** | Budget system in [budgets.ts](../src/core/governance/budgets.ts) | Add split/allocate functions | **Low (2h)** |
+| **Non-unwinding conditions** | Actor supervisors have restart/resume (different thing) | Need Lisp-style condition system | **Medium (8h)** |
+
+**Verdict**: Most are simple additions. Non-unwinding conditions need design.
+
+### Summary Table
+
+| Category | Items | Already Have | Need to Add | Total Effort |
+|----------|-------|--------------|-------------|--------------|
+| **Continuations** | 3 | 2 partial | 1 (call/cc primitive) | ~8h |
+| **Evidence** | 4 | 2 partial | 2 (graph, persistence) | ~2-3d |
+| **Monadic/Effects** | 4 | 0 | 4 | ~16h |
+| **Conditions** | 1 | 0 (actor supervisors are different) | 1 | ~8h |
+
+**Key Insight**: The hardest items (continuations, evidence types) are **already partially implemented**. We're mostly adding primitives and APIs to expose existing machinery.
+
+---
+
+## 🏗️ LAYER DEPENDENCY ANALYSIS
+
+Understanding what depends on what is critical for correct ordering:
+
+```
+Layer 5: Domain DSLs
+    │
+    │ DEPENDS ON: Search strategies, composable solvers
+    ▼
+Layer 4: Search & Strategy
+    │
+    │ DEPENDS ON: Streams (for lazy results), Nondet (for branching),
+    │             Budget (for resource limits)
+    ▼
+Layer 3: Effects & Control
+    │
+    │ DEPENDS ON: Continuations (for amb backtracking, generators),
+    │             Evidence (for provenance-aware effects)
+    ▼
+Layer 2: Oracle & Provenance
+    │
+    │ DEPENDS ON: Continuations (for async oracle calls),
+    │             Core evaluation (for result handling)
+    ▼
+Layer 1: Evaluation Core  ← THIS IS WHERE THE MAGIC MUST LIVE
+    │
+    │ CONTAINS: CEKS machine, call/cc, environments, store
+    ▼
+Layer 0: Primitives (cons, car, cdr, arithmetic, etc.)
+```
+
+### Key Insight: call/cc Must Be Layer 1
+
+The current roadmap had call/cc in Phase 5 (optional). **This is wrong.**
+
+call/cc is foundational because:
+- **amb backtracking** uses continuations under the hood
+- **async oracle calls** need to capture continuations
+- **non-unwinding conditions** require continuation access
+- **generators/coroutines** are continuations
+- **streams with interleaving** need fair merge via continuations
+
+**OmegaLLM already has the machinery** (the K in CEKS is the continuation).
+We just need to expose it.
+
+---
+
+## 📋 INSIDE-OUT WORKLIST
+
+Work items ordered from core outward. Each layer builds on the previous.
+
+### 🔴 LAYER 1: Evaluation Core (CRITICAL - Do First)
+
+| # | Task | Effort | Why Critical | Unlocks | Already Have |
+|---|------|--------|--------------|---------|--------------|
+| **1.1** | **Expose call/cc primitive** | **Low (4h)** | Machinery exists in CEKS, just not exposed | Conditions, generators, proper amb | `kont: Frame[]`, `machine-fork` |
+| **1.2** | **Add call-with-prompt / abort-to-prompt** | **Low (2h)** | Delimited continuations for scoped effects | Better effect composition | `KHandleBoundary`, `resumeTo` |
+| **1.3** | **Add shift/reset** | **Low (2h)** | Alternative delimited continuation API | Academic compatibility | (sugar over 1.2) |
+
+**Status**: CEKS machine ✅, machine-fork ✅, machine-step ✅, effect handlers with resume ✅ | **Just need call/cc primitive**
+
+### 🟠 LAYER 2: Oracle & Provenance (HIGH - LLM Safety)
+
+| # | Task | Effort | Why Critical | Unlocks | Already Have |
+|---|------|--------|--------------|---------|--------------|
+| **2.1** | **Evidence model types** | **Low (4h)** | TypedClaim, EvidenceId, EpistemicMode | Provenance tracking | `Evidence` type (3 variants) |
+| **2.2** | **evidence-id / verify-evidence / evidence-stale?** | **Low (4h)** | Core evidence primitives | Hallucination prevention | `evidence?: Evidence[]` in MeaningVal |
+| **2.3** | **ProvenanceGraph** | Medium (1d) | DAG of evidence relationships | Claim tracing | No |
+| **2.4** | **Receipt ledger (RSR-03)** | Medium (1d) | Persistent oracle call records | Replay, audit | `InMemoryReceiptStore` |
+
+**Status**: Oracle ✅, Receipts (partial) ✅, Evidence types (partial) ✅ | **Need primitives + persistence**
+
+### 🟡 LAYER 3: Effects & Control (MEDIUM - Composition)
+
+| # | Task | Effort | Why Critical | Unlocks | Already Have |
+|---|------|--------|--------------|---------|--------------|
+| **3.1** | **unit / mzero / mplus / bind** | **Low (4h)** | Monadic interface for nondet | Cleaner composition | `amb` effect exists |
+| **3.2** | **Non-unwinding conditions** | **Medium (8h)** | Needs call/cc from Layer 1 | Resumable errors | Actor supervisors (different) |
+| **3.3** | **stream-interleave** | **Low (2h)** | Fair merge for search | Better exploration | Comment only in runtimeImpl.ts |
+| **3.4** | **budget-split / budget-allocate** | **Low (2h)** | Parallel work allocation | Resource management | Budget system exists |
+
+**Status**: Streams ✅, Nondet ✅, Concurrency ✅, Constraints ✅ | **Monadic interface + conditions needed (but simple adds)**
+
+### 🟢 LAYER 4: Search & Strategy (LOW - Patterns)
+
+| # | Task | Effort | Why Critical | Unlocks |
+|---|------|--------|--------------|---------|
+| **4.1** | **repair-until-valid pattern** | Medium | Iterate until constraints satisfied | Auto-repair |
+| **4.2** | **Composable solver interface** | Medium | compose-sequential/parallel/fallback | Solver composition |
+| **4.3** | **solver-estimate** | Low | Cost prediction before execution | Resource planning |
+| **4.4** | **Fact store** | Medium | Monotone accumulation | Knowledge persistence |
+| **4.5** | **Fixpoint iteration** | Medium | Convergence/cycle detection | Iterative refinement |
+
+**Status**: Frontiers ✅, Fair scheduling ✅ | **Patterns can be added as libraries**
+
+### 🔵 LAYER 5: Domain DSLs (OPTIONAL - As Needed)
+
+| # | Task | Effort | Why Critical | Unlocks |
+|---|------|--------|--------------|---------|
+| **5.1** | **Domain algebra** | High | Only if formal reasoning needed | Problem modeling |
+| **5.2** | **Meta-search** | High | Only if adaptive strategy needed | Strategy selection |
+| **5.3** | **Experts/Sessions** | High | Only if multi-agent needed | Role-based orchestration |
+
+**Status**: Extensible foundation ready | **Build only if needed**
+
+---
+
+## 🎯 RECOMMENDED EXECUTION ORDER
+
+```
+PHASE A: Core Magic (MUST DO)
+├── 1.1 Expose call/cc           ← Unlocks everything else
+├── 1.2 Delimited continuations  ← Better effect scoping
+└── 2.1-2.2 Evidence model       ← LLM safety
+
+PHASE B: Clean Composition (SHOULD DO)
+├── 3.1 Monadic primitives       ← Cleaner nondet
+├── 3.2 Non-unwinding conditions ← Resumable errors (needs call/cc)
+├── 3.3 stream-interleave        ← Fair search
+└── 2.3-2.4 Full provenance      ← Complete audit trail
+
+PHASE C: Patterns (NICE TO HAVE)
+├── 4.1-4.3 Solver patterns      ← Strategic problem solving
+└── 4.4-4.5 Facts/fixpoint       ← Knowledge iteration
+
+PHASE D: Domain DSLs (IF NEEDED)
+└── 5.1-5.3 As requirements emerge
+```
+
+---
+
+## 🔑 KEY ARCHITECTURAL DECISIONS
+
+### Decision 1: OmegaLLM is the Canonical Core
+- **Rationale**: CEKS machine provides unique introspection capabilities
+- **Action**: All features build on OmegaLLM's eval core
+- **Trade-off**: LambdaRLM patterns must be adapted, not copied verbatim
+
+### Decision 2: call/cc is Layer 1, Not Optional
+- **Rationale**: It unlocks conditions, generators, proper amb, async oracle
+- **Action**: Expose CEKS continuation stack as first-class values
+- **Trade-off**: Slightly more complex core, but much cleaner composition
+
+### Decision 3: Evidence is Layer 2, Tightly Coupled to Oracle
+- **Rationale**: Every oracle call should produce evidence
+- **Action**: Evidence model integrated with oracle protocol
+- **Trade-off**: Can't have oracle without evidence tracking
+
+### Decision 4: Preserve SICP Semantics
+- **Rationale**: Portability, familiarity, clean composition
+- **Action**: All primitives use hyphenated names, predicates end with `?`
+- **Trade-off**: Some TypeScript internal names differ from Lisp names
+
+### Decision 5: Layers 4-5 are Libraries, Not Core
+- **Rationale**: Not every use case needs solvers or domain algebra
+- **Action**: These are separate packages that import from core
+- **Trade-off**: Less integration, but cleaner separation
+
+---
+
+## ⚡ QUICK WINS (Can Do Immediately)
+
+These require no core changes:
+
+| Task | Effort | Files to Modify |
+|------|--------|-----------------|
+| `stream-interleave` | 2h | src/core/stream/stream.ts, prims.ts |
+| `budget-split` | 1h | src/core/governance/budgets.ts, prims.ts |
+| `budget-allocate` | 1h | src/core/governance/budgets.ts, prims.ts |
+| `unit/mzero/mplus/bind` | 4h | New file: src/core/monad.ts, prims.ts |
+
+## 🔧 MEDIUM EFFORT (Requires Some Core Work)
+
+| Task | Effort | Files to Modify |
+|------|--------|-----------------|
+| `call/cc` exposure | 8h | src/core/eval/machineStep.ts, prims.ts |
+| Evidence types | 4h | New file: src/core/evidence/types.ts |
+| Evidence primitives | 8h | src/core/oracle/receipts.ts, prims.ts |
+
+## 🏗️ HIGH EFFORT (Significant Architecture)
+
+| Task | Effort | Impact |
+|------|--------|--------|
+| Full provenance graph | 2-3 days | Complete audit trail |
+| Non-unwinding conditions | 2-3 days | Needs call/cc first |
+| Domain algebra | 1 week | Full rewrite from scratch |
 
 ---
 
 *Document generated: 2026-01-19*
-*Verified against actual source files*
+*Full audit completed: 2026-01-19*
+*Worklist ordered inside-out by layer dependency*
 *Based on REFERENCE-ALGEBRA.md and ARCHITECTURE-EXPLANATION.md formal specifications*

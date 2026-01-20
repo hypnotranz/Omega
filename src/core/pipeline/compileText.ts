@@ -84,6 +84,8 @@ function initialEnv(moduleScope: string): Env {
     "not",
     // Special values
     "unit", "*uninit*",
+    // Continuations
+    "call/cc", "call-with-prompt", "abort-to-prompt",
     // List operations
     "cons", "car", "cdr", "null?", "pair?", "list", "append", "length", "reverse", "list-ref",
     "cadr", "caddr",
@@ -116,6 +118,8 @@ function initialEnv(moduleScope: string): Env {
     // Rule/rewriting
     "make-rule", "make-rule-where", "rule?",
     "rewrite-once", "rewrite-fixpoint", "rewrite-trace", "rewrite-conflicts",
+    // Evidence
+    "evidence-id", "verify-evidence", "evidence-stale?",
     // Machine introspection (debugging)
     "machine-new", "machine?", "machine-step", "machine-run", "machine-done?",
     "machine-value", "machine-control", "machine-stack", "machine-step-count",

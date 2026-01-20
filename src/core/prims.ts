@@ -5,10 +5,13 @@
 import type { Env } from "./eval/env";
 import { envEmpty, envSet } from "./eval/env";
 import type { Store } from "./eval/store";
+import type { State, Frame } from "./eval/machine";
 import type { Val } from "./eval/values";
 import { VUnit, VTrue, VFalse } from "./eval/values";
 import { rule, rewriteOnce, rewriteFixpoint, rewriteTrace, detectConflicts, substitute, type Rule, type Strategy } from "./oracle/trs";
 import { matchAST } from "./oracle/match";
+import { sha256JSON } from "./artifacts/hash";
+import { isMeaning } from "./oracle/meaning";
 
 export function installPrims(store: Store): { env: Env; store: Store } {
   let env: Env = envEmpty();
@@ -18,6 +21,62 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     const [st2, addr] = st.alloc(v);
     st = st2;
     env = envSet(env, name, addr);
+  }
+
+  function isCallable(proc: Val): proc is { tag: "Native" | "Closure" } {
+    return proc.tag === "Native" || proc.tag === "Closure";
+  }
+
+  function ensureArity(proc: Val, expected: number, name: string): void {
+    if (proc.tag === "Native") {
+      if (proc.arity !== "variadic" && proc.arity !== expected) {
+        throw new Error(`${name}: expected procedure of arity ${expected}`);
+      }
+      return;
+    }
+    if (proc.tag === "Closure") {
+      if (proc.params.length !== expected) {
+        throw new Error(`${name}: expected procedure of arity ${expected}`);
+      }
+      return;
+    }
+    throw new Error(`${name}: expected a procedure`);
+  }
+
+  function applyProcedure(proc: Val, procArgs: Val[], state: State): State {
+    if (proc.tag === "Native") {
+      return proc.fn(procArgs, state);
+    }
+    if (proc.tag === "Closure") {
+      if (proc.params.length !== procArgs.length) {
+        throw new Error(`procedure arity mismatch: expected ${proc.params.length}, got ${procArgs.length}`);
+      }
+      let store = state.store;
+      let env2 = proc.env;
+      for (let i = 0; i < proc.params.length; i++) {
+        const [store2, addr] = store.alloc(procArgs[i]);
+        store = store2;
+        env2 = envSet(env2, proc.params[i], addr);
+      }
+      const kont = state.kont.concat([{ tag: "KCall", savedEnv: state.env } as Frame]);
+      return { ...state, control: { tag: "Expr", e: proc.body }, env: env2, store, kont };
+    }
+    throw new Error("expected procedure");
+  }
+
+  function promptKey(v: Val): string {
+    switch (v.tag) {
+      case "Sym": return `sym:${v.name}`;
+      case "Str": return `str:${v.s}`;
+      case "Num": return `num:${v.n}`;
+      case "Bool": return `bool:${v.b}`;
+      default:
+        try {
+          return `${v.tag}:${JSON.stringify(v)}`;
+        } catch {
+          return v.tag;
+        }
+    }
   }
 
   // *uninit*: placeholder for letrec uninitialized bindings
@@ -80,6 +139,83 @@ export function installPrims(store: Store): { env: Env; store: Store } {
   }});
 
   def("unit", { tag: "Native", name: "unit", arity: 0, fn: (_args, s) => ({ ...s, control: { tag: "Val", v: VUnit } }) });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Continuations and prompts
+  // ─────────────────────────────────────────────────────────────────
+  def("call/cc", { tag: "Native", name: "call/cc", arity: 1, fn: (args, s: State) => {
+    const proc = args[0];
+    if (!isCallable(proc)) {
+      throw new Error("call/cc expects a procedure");
+    }
+    ensureArity(proc, 1, "call/cc");
+
+    const cont: Val = {
+      tag: "Continuation",
+      kont: s.kont.slice(),
+      env: s.env,
+      store: s.store,
+      handlers: s.handlers.slice(),
+    } as Val;
+
+    return applyProcedure(proc, [cont], s);
+  }});
+
+  def("call-with-prompt", { tag: "Native", name: "call-with-prompt", arity: 3, fn: (args, s: State) => {
+    const [tagVal, thunk, handler] = args;
+    if (!isCallable(thunk)) throw new Error("call-with-prompt: expected thunk");
+    if (!isCallable(handler)) throw new Error("call-with-prompt: expected handler");
+    ensureArity(thunk, 0, "call-with-prompt");
+    ensureArity(handler, 2, "call-with-prompt");
+
+    const promptFrame: Frame = {
+      tag: "KPrompt",
+      promptTag: tagVal,
+      handler,
+      env: s.env,
+      savedKont: s.kont.slice(),
+      savedHandlersDepth: s.handlers.length,
+    };
+
+    const stWithPrompt: State = { ...s, kont: s.kont.concat([promptFrame]) };
+    return applyProcedure(thunk, [], stWithPrompt);
+  }});
+
+  def("abort-to-prompt", { tag: "Native", name: "abort-to-prompt", arity: 2, fn: (args, s: State) => {
+    const [tagVal, value] = args;
+    const targetKey = promptKey(tagVal);
+
+    let found = -1;
+    for (let i = s.kont.length - 1; i >= 0; i--) {
+      const fr = s.kont[i] as Frame;
+      if (fr.tag === "KPrompt" && promptKey((fr as any).promptTag) === targetKey) {
+        found = i;
+        break;
+      }
+    }
+
+    if (found < 0) {
+      throw new Error(`abort-to-prompt: no prompt for tag ${targetKey}`);
+    }
+
+    const pf = s.kont[found] as any;
+    const handlerState: State = {
+      ...s,
+      env: pf.env,
+      kont: pf.savedKont,
+      handlers: s.handlers.slice(0, pf.savedHandlersDepth),
+    };
+
+    const kVal: Val = {
+      tag: "Continuation",
+      kont: s.kont.slice(found),
+      env: s.env,
+      store: s.store,
+      handlers: s.handlers.slice(0, pf.savedHandlersDepth),
+    } as Val;
+
+    return applyProcedure(pf.handler, [kVal, value], handlerState);
+  }});
 
   // ─────────────────────────────────────────────────────────────────
   // Metacircular primitives (cons, car, cdr, null?, pair?)
@@ -2005,6 +2141,32 @@ export function installPrims(store: Store): { env: Env; store: Store } {
 
     const result = substitute(template, bindings);
     return { ...s, control: { tag: "Val", v: result } };
+  }});
+
+  // ─────────────────────────────────────────────────────────────────
+  // Evidence primitives
+  // ─────────────────────────────────────────────────────────────────
+  def("evidence-id", { tag: "Native", name: "evidence-id", arity: 1, fn: (args, s) => {
+    const v = args[0];
+    if (isMeaning(v) && v.evidence && v.evidence.length > 0) {
+      const id = sha256JSON(v.evidence);
+      return { ...s, control: { tag: "Val", v: { tag: "Str", s: id } } };
+    }
+    return { ...s, control: { tag: "Val", v: VFalse } };
+  }});
+
+  def("verify-evidence", { tag: "Native", name: "verify-evidence", arity: 1, fn: (args, s) => {
+    const v = args[0];
+    const ok = isMeaning(v) && Array.isArray(v.evidence) && v.evidence.length > 0;
+    return { ...s, control: { tag: "Val", v: ok ? VTrue : VFalse } };
+  }});
+
+  def("evidence-stale?", { tag: "Native", name: "evidence-stale?", arity: 1, fn: (args, s) => {
+    const v = args[0];
+    if (isMeaning(v) && v.evidence && v.evidence.length > 0) {
+      return { ...s, control: { tag: "Val", v: VFalse } };
+    }
+    return { ...s, control: { tag: "Val", v: VTrue } };
   }});
 
   // ─────────────────────────────────────────────────────────────────

@@ -1,0 +1,67 @@
+project:
+  name: "OmegaLLM"
+  description: "Lisp dialect with intensional semantics for AI agent orchestration"
+
+features:
+  # Phase A: Core Magic (Foundation)
+  - id: job-004-call-cc
+    title: "Implement Core Magic (call/cc + Evidence)"
+    type: implementation
+    requirements: "CLAUDE-JOBS/004-IMPLEMENT-CORE-MAGIC.md"
+    acceptance_criteria:
+      - ContinuationVal type in values.ts
+      - call/cc primitive captures current continuation
+      - call-with-prompt/abort-to-prompt for delimited continuations
+      - evidence-id, verify-evidence, evidence-stale? primitives
+      - All tests pass (npx vitest run test/continuations/)
+
+  # Phase B: Clean Composition
+  - id: job-005-conditions
+    title: "Non-Unwinding Conditions (CL-style)"
+    type: implementation
+    depends_on:
+      - job-004-call-cc
+    requirements: "CLAUDE-JOBS/005-NON-UNWINDING-CONDITIONS.md"
+    acceptance_criteria:
+      - signal, error, handler-bind primitives
+      - restart-bind, invoke-restart, find-restart primitives
+      - ConditionFrame and RestartFrame in machine.ts
+      - All tests pass (npx vitest run test/conditions/)
+
+  - id: job-006-monads
+    title: "Monadic Primitives (unit/bind/mzero/mplus)"
+    type: implementation
+    # No depends_on - can run parallel with 004
+    requirements: "CLAUDE-JOBS/006-MONADIC-PRIMITIVES.md"
+    acceptance_criteria:
+      - unit, mzero, mplus, bind primitives
+      - KBind frame for monadic sequencing
+      - lib/monad.lisp with mdo macro
+      - All tests pass (npx vitest run test/monad/)
+
+  - id: job-007-provenance
+    title: "Full Provenance System"
+    type: implementation
+    depends_on:
+      - job-004-call-cc
+    requirements: "CLAUDE-JOBS/007-FULL-PROVENANCE-SYSTEM.md"
+    acceptance_criteria:
+      - ProvenanceGraph type
+      - provenance-trace, provenance-record primitives
+      - provenance-check-staleness primitive
+      - Persistent storage integration
+      - All tests pass (npx vitest run test/provenance/)
+
+  # Phase C: Patterns
+  - id: job-008-solvers
+    title: "Search Patterns & Composable Solvers"
+    type: implementation
+    depends_on:
+      - job-005-conditions
+      - job-006-monads
+    requirements: "CLAUDE-JOBS/008-SEARCH-PATTERNS-SOLVERS.md"
+    acceptance_criteria:
+      - make-solver, compose-* combinators
+      - repair-until-valid, fixpoint primitives
+      - fact-store, budget-split primitives
+      - All tests pass (npx vitest run test/solver/)

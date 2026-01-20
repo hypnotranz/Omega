@@ -9,6 +9,9 @@ dist/
 .env.local
 .env.*.local
 config.yaml
+.agent-sessions/
+.beads/
+.claude/
 
 # IDE
 .idea/

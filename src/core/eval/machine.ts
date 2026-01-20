@@ -24,6 +24,7 @@ export type Frame =
   | { tag: "KEffect"; op: string; pending: Expr[]; acc: Val[]; env: Env }
   | { tag: "KHandleBoundary"; hid: string; savedHandlersDepth: number; resumeTo?: { kont: Frame[]; handlersDepth: number } }
   | { tag: "KHandleReturn"; mode: "exit" | "resume"; hid: string; targetKont: Frame[]; targetHandlersDepth: number; savedHandlersDepth: number }
+  | { tag: "KPrompt"; promptTag: Val; handler: Val; env: Env; savedKont: Frame[]; savedHandlersDepth: number }
   | { tag: "KMatch"; clauses: Array<{ pat: Pattern; body: Expr }>; env: Env }
   | { tag: "KOracleLambda"; params: string[]; env: Env };  // oracle-lambda: waiting for spec to evaluate
 

@@ -5,8 +5,9 @@
 
 import type { Expr } from "../ast";
 import type { Env } from "./env";
+import type { Store } from "./store";
 import type { Resumption } from "../effects/opcall";
-import type { State, StepOutcome } from "./machine";
+import type { State, StepOutcome, Frame, HandlerFrame } from "./machine";
 import type { Syntax } from "../syntax/syntax";
 import type { DistVal } from "./dist";
 import type { MeaningVal } from "../oracle/meaning";
@@ -47,6 +48,20 @@ export type MachineVal = {
   parentId?: string;
   /** Unique machine ID */
   machineId: string;
+};
+
+/**
+ * ContinuationVal: First-class undelimited continuation.
+ *
+ * Captures the current continuation stack plus dynamic handler stack so it can
+ * be invoked later (possibly multiple times).
+ */
+export type ContinuationVal = {
+  tag: "Continuation";
+  kont: Frame[];
+  env: Env;
+  store: Store;
+  handlers: HandlerFrame[];
 };
 
 /**
@@ -570,6 +585,7 @@ export type Val =
   | { tag: "Native"; name: string; arity: number | "variadic"; fn: (args: Val[], st: State) => State }
   | { tag: "Cont"; hid: string; boundaryIndex: number; resumption: Resumption }
   | { tag: "OracleProc"; params: string[]; spec: Val; env: Env; policyDigest?: string }
+  | ContinuationVal   // First-class continuation (call/cc, prompts)
   | MachineVal      // Patch Set A4: Reified machine state for debugging/stepping
   | DistVal         // Patch Set A: Distributions for nondeterministic LLM results
   | MeaningVal      // Patch Set A: Structured semantic artifacts
