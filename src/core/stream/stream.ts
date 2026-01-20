@@ -403,6 +403,32 @@ export function streamZip(
   }, "stream-zip-tail");
 }
 
+/**
+ * Fairly interleave two streams: s1[0], s2[0], s1[1], s2[1], ...
+ */
+export function streamInterleave(
+  ctx: StreamContext,
+  s1: Val,
+  s2: Val,
+  evaluator?: (thunk: Val) => { value: Val; oracleCalls: number }
+): Val {
+  if (!isStream(s1) || !isStream(s2)) {
+    throw new Error("stream-interleave: expected streams");
+  }
+
+  if (isStreamNull(s1)) {
+    return s2;
+  }
+
+  const head = streamCar(s1);
+  const stream1 = s1;
+
+  return consStream(ctx, head, () => {
+    const tail1 = streamCdr(ctx, stream1, evaluator);
+    return streamInterleave(ctx, s2, tail1, evaluator);
+  }, "stream-interleave-tail");
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Stream Generators
 // ─────────────────────────────────────────────────────────────────

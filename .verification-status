@@ -1,5 +1,5 @@
 <<<VERIFICATION>>>
-TESTS: PASS
-REGRESSION: PASS
-LINT: PASS
+TESTS: FAIL (npm test timed out; solver suites failing: missing make-solver, fixpoint, budget-split, repair)
+REGRESSION: FAIL (same solver failures)
+LINT: NOT RUN
 <<<END_VERIFICATION>>>
