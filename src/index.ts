@@ -102,3 +102,10 @@ export type { ProvenanceGraphData, StalenessReport, StaleItem, SourceChecker } f
 export { evidenceId, computeSourceHash } from "./core/provenance/evidence";
 export { FileProvenanceStore } from "./core/provenance/store/file";
 export type { ProvenanceStore, StoredReceipt, ReceiptFilter } from "./core/provenance/store/interface";
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FRAMEIR (Canonical IR)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export * from "./frameir";
+export * from "./outcome";

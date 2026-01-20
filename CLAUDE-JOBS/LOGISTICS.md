@@ -2,6 +2,41 @@
 
 **All CLAUDE-JOBS implementers MUST follow these procedures.**
 
+---
+
+## ⚠️ Authoritative Document Hierarchy
+
+When implementing any job, the following document hierarchy applies:
+
+| Priority | Document | Authority |
+|----------|----------|-----------|
+| 1 (Highest) | `docs/ARCHITECTURE-LANGUAGES-*.md` | **AUTHORITATIVE** - These define the canonical design |
+| 2 | Job specifications in `CLAUDE-JOBS/*.md` | Derived from architecture docs |
+| 3 | Existing source code | May be **legacy** - update to match architecture |
+| 4 | Other docs (requirements, notes) | **Historical context only** - may be outdated |
+
+### Key Principle
+
+> **The ARCHITECTURE-LANGUAGES-*.md documents take precedence over all other documentation and existing code.**
+
+If you encounter conflicts between:
+- **Existing code vs. architecture docs** → Follow the architecture docs; the code needs to be updated
+- **Old requirements vs. architecture docs** → Follow the architecture docs; requirements may be outdated
+- **Job spec unclear?** → Consult the referenced architecture sections for the canonical design
+
+### Architecture Document Map
+
+| Document | Topics |
+|----------|--------|
+| `ARCHITECTURE-LANGUAGES-1.md` | §1-15: Core principles, Lisp semantics |
+| `ARCHITECTURE-LANGUAGES-2.md` | §16-28: Value types, Outcome ADT, effects |
+| `ARCHITECTURE-LANGUAGES-3.md` | §29-40: Effect kinds, ports, hexagonal architecture |
+| `ARCHITECTURE-LANGUAGES-4.md` | §41-52: Compilation pipeline, replay, lint |
+| `ARCHITECTURE-LANGUAGES-5.md` | §53-63: FrameIR specification |
+| `ARCHITECTURE-LANGUAGES-6.md` | §64-75: Runtime, scheduling, ports API |
+
+---
+
 ## Related Documentation
 
 | Document | Purpose |

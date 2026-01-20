@@ -43,6 +43,20 @@ Each job file includes:
 |--------|-------|----------|--------|------------|
 | [008](./008-SEARCH-PATTERNS-SOLVERS.md) | Search Patterns & Composable Solvers | P2 - Nice to Have | NOT STARTED | 005, 006 |
 
+### Phase D: Architecture Alignment (FrameIR & Ports)
+
+These jobs implement the architecture specified in `ARCHITECTURE-LANGUAGES-*.md` documents.
+
+| Job ID | Title | Priority | Status | Depends On |
+|--------|-------|----------|--------|------------|
+| [009](./009-FRAMEIR-PACKAGE.md) | FrameIR Package | P0 - Foundation | DONE | - |
+| [010](./010-PRIMITIVE-REGISTRY.md) | Primitive Registry | P1 - Important | NOT STARTED | 009 |
+| [011](./011-PORT-ABSTRACTIONS.md) | Port Abstractions (Hexagonal) | P1 - Important | NOT STARTED | 009 |
+| [012](./012-OUTCOME-FAILURE-DIAGNOSTIC.md) | Outcome/Failure/Diagnostic ADTs | P1 - Important | NOT STARTED | 009 |
+| [013](./013-LINT-PASSES.md) | Lint Passes | P1 - Important | NOT STARTED | 009, 010 |
+| [014](./014-COMPILATION-PIPELINE.md) | Compilation Pipeline | P1 - Important | NOT STARTED | 009 |
+| [015](./015-REPLAY-SYSTEM.md) | Replay System | P1 - Important | NOT STARTED | 011, 012 |
+
 ---
 
 ## Dependency Graph
@@ -80,6 +94,29 @@ Each job file includes:
                     │                 │ 008 │                                 │
                     │                 │Solvr│                                 │
                     │                 └─────┘                                 │
+                    │                                                         │
+                    └─────────────────────────────────────────────────────────┘
+
+                    ┌─────────────────────────────────────────────────────────┐
+                    │       PHASE D: Architecture Alignment (FrameIR)         │
+                    │                                                         │
+                    │                     ┌─────┐                             │
+                    │                     │ 009 │ FrameIR Package             │
+                    │                     │ IR  │                             │
+                    │                     └──┬──┘                             │
+                    │           ┌───────────┬┴───────────┬───────────┐       │
+                    │           ▼           ▼            ▼           ▼       │
+                    │       ┌─────┐     ┌─────┐     ┌─────┐     ┌─────┐     │
+                    │       │ 010 │     │ 011 │     │ 012 │     │ 014 │     │
+                    │       │Regst│     │Ports│     │Outcm│     │Compl│     │
+                    │       └──┬──┘     └──┬──┘     └──┬──┘     └─────┘     │
+                    │          │           │           │                     │
+                    │          ▼           └─────┬─────┘                     │
+                    │       ┌─────┐              ▼                           │
+                    │       │ 013 │          ┌─────┐                         │
+                    │       │Lints│          │ 015 │                         │
+                    │       └─────┘          │Replv│                         │
+                    │                        └─────┘                         │
                     │                                                         │
                     └─────────────────────────────────────────────────────────┘
 ```
@@ -176,8 +213,9 @@ Strategic problem-solving patterns.
 | **A** | 004 | 2-3 days | call/cc, evidence primitives, delimited continuations |
 | **B** | 005, 006, 007 | 3-5 days | Conditions, monadic composition, full provenance |
 | **C** | 008 | 3-5 days | Composable solvers, repair loops, fact store, fixpoint |
+| **D** | 009-015 | 5-7 days | FrameIR, ports, replay, lints, compilation pipeline |
 
-**Total**: ~2-3 weeks for complete implementation
+**Total**: ~3-4 weeks for complete implementation
 
 ---
 
@@ -238,3 +276,22 @@ When documenting a new job:
 | 006 | `@omega/core` | `unit`, `mzero`, `mplus`, `bind`, `guard`, `msum` | machine.ts (KBind frame), lib/monad.lisp |
 | 007 | `@omega/provenance` | `provenance-trace`, `provenance-record`, `provenance-check-staleness` | provenance/graph.ts, provenance/persistentStore.ts |
 | 008 | `@omega/solver` | `budget-split`, `budget-allocate`, `make-solver`, `solver-solve`, `compose-*`, `repair-until-valid`, `fixpoint`, fact store | solver/*.ts |
+| 009 | `@frameir` | ValueIR, PromptIR, FlowIR, IRBundle | frameir/*.ts |
+| 010 | `@frameir` | PrimitiveDescriptor, Registry | frameir/registry.ts |
+| 011 | `@omega/ports` | OraclePort, ToolPort, StorePort, ClockPort, RngPort | ports/*.ts |
+| 012 | `@omega/core` | Outcome, Failure, Diagnostic | outcome.ts, diagnostics.ts |
+| 013 | `@omega/lint` | budgetDominatorPass, toolContractPass, timeoutGuardPass | lint/*.ts |
+| 014 | `@lambdallm/compiler` | Reader, Macroexpander, Lowerer, Normalizer | compiler/*.ts |
+| 015 | `@omega/replay` | ReplayLog, ReplayPort adapters, determinism guards | replay/*.ts |
+
+---
+
+## Related Architecture Documents
+
+Phase D jobs are derived from the following architecture specifications:
+
+| Document | Sections | Jobs |
+|----------|----------|------|
+| [ARCHITECTURE-LANGUAGES-4.md](../docs/ARCHITECTURE-LANGUAGES-4.md) | §41-55 | 009, 013, 014, 015 |
+| [ARCHITECTURE-LANGUAGES-5.md](../docs/ARCHITECTURE-LANGUAGES-5.md) | §56-68 | 009, 010, 012 |
+| [ARCHITECTURE-LANGUAGES-6.md](../docs/ARCHITECTURE-LANGUAGES-6.md) | §69-80 | 009, 011, 015 |

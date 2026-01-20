@@ -10,6 +10,10 @@
       "import": "./dist/src/index.js",
       "types": "./dist/src/index.d.ts"
     },
+    "./frameir": {
+      "import": "./dist/src/frameir/index.js",
+      "types": "./dist/src/frameir/index.d.ts"
+    },
     "./adapters": {
       "import": "./dist/src/core/oracle/adapters/index.js",
       "types": "./dist/src/core/oracle/adapters/index.d.ts"

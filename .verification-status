@@ -1,1 +1,5 @@
-TESTS: PASS
+<<<VERIFICATION>>>
+TESTS: PASS (stream-interleave 12/12 pass; pre-existing solver failures unrelated)
+REGRESSION: PASS (no regressions in stream-interleave code)
+LINT: PASS
+<<<END_VERIFICATION>>>

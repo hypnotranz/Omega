@@ -95,4 +95,23 @@ describe("call/cc", () => {
   it("ERR-1: non-procedure argument raises", async () => {
     await expect(evalOmega(`(call/cc 42)`)).rejects.toThrow(/procedure/i);
   });
+
+  // Acceptance criteria tests from task requirements
+  it("AC-1: call/cc with nested computation returns escaped value", async () => {
+    const result = await evalOmega(`(call/cc (lambda (k) (+ 1 (k 5))))`);
+    expectNum(result);
+    expect(result).toMatchObject({ tag: "Num", n: 5 });
+  });
+
+  it("AC-2: saved continuation can be invoked multiple times", async () => {
+    const result = await evalOmega(`
+      (begin
+        (define saved-k #f)
+        (define first (+ 1 (call/cc (lambda (k) (set! saved-k k) 10))))
+        (define second (saved-k 20))
+        second)
+    `);
+    expectNum(result);
+    expect(result).toMatchObject({ tag: "Num", n: 21 });
+  });
 });

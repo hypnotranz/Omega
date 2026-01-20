@@ -15,6 +15,7 @@ import type { Profile, TruthRegime, OracleReqTag } from "../governance/profile";
 import type { Ctx } from "../ctx/ctx";
 import type { Hash } from "../artifacts/hash";
 import type { ConditionVal } from "../conditions/types";
+type SolverApplyFn = (proc: Val, args: Val[], state: State) => State | StepOutcome;
 
 /**
  * MachineVal: Reified execution state as a first-class value.
@@ -571,6 +572,46 @@ export type IRVal = {
   label?: string;
 };
 
+// ─────────────────────────────────────────────────────────────────
+// Solver layer values (Job 008)
+// ─────────────────────────────────────────────────────────────────
+
+export type BudgetVal = {
+  tag: "Budget";
+  tokens: number;
+  calls: number;
+  time: number;
+};
+
+export type ResultVal = {
+  tag: "Result";
+  kind: "success" | "partial" | "failure" | string;
+  solution?: Val;
+  remaining?: Val;
+  reason?: string;
+  cost: number;
+};
+
+export type CostEstimateVal = {
+  tag: "CostEstimate";
+  minCost: number;
+  maxCost: number;
+  expectedCost: number;
+  confidence: number;
+};
+
+export type SolverVal = {
+  tag: "Solver";
+  name: string;
+  solve: (problem: Val, budget: BudgetVal, state: State, apply: SolverApplyFn) => { results: ResultVal[]; state: State };
+  estimate: (problem: Val, state: State, apply: SolverApplyFn) => { estimate: CostEstimateVal; state: State };
+};
+
+export type FactStoreVal = {
+  tag: "FactStore";
+  facts: Map<string, Val>;
+};
+
 // Compatibility tagged values used by stream and demo code
 export type IntVal = { tag: "Int"; value: bigint };
 export type ListVal = { tag: "List"; elements: Val[] };
@@ -617,7 +658,12 @@ export type Val =
   | GenericMissVal  // Prompt 14: Unresolved generic dispatch
   | PromiseVal      // Prompt 16: Memoized promise/thunk for laziness
   | StreamVal       // Prompt 16: Stream marker for stream operations
-  | IRVal;          // Prompt 17: Compiled IR artifact
+  | IRVal           // Prompt 17: Compiled IR artifact
+  | BudgetVal       // Job 008: First-class budgets for solvers
+  | ResultVal       // Job 008: Solver result
+  | CostEstimateVal // Job 008: Cost estimate for solvers
+  | SolverVal       // Job 008: First-class solver
+  | FactStoreVal;   // Job 008: Monotone fact store
 
 export const VUnit: Val = { tag: "Unit" };
 export const VTrue: Val = { tag: "Bool", b: true };

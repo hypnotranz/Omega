@@ -576,6 +576,360 @@ Based on analysis against [REFERENCE-ALGEBRA.md](./REFERENCE-ALGEBRA.md) and [AR
 
 ---
 
+## 📋 FRAMELISP: Complete LLM Programming Specification (84 Items)
+
+> **Source**: [REFERENCE-ALGEBRA.md](./REFERENCE-ALGEBRA.md) - Complete specification for LLM composition
+> **Job Spec**: [JOB-010](../CLAUDE-JOBS/010-FRAMELISP-COMPLETE-DOCUMENTATION.md)
+>
+> **Design Principles** (SICP-aligned):
+> 1. **Primitive expressions** - the simplest entities (data types, kernel ops)
+> 2. **Means of combination** - compound elements (prompt+, bind, all/race)
+> 3. **Means of abstraction** - naming/manipulation (defprompt, defop, defgraph)
+>
+> Each layer maintains **closure under composition** (Henderson Escher principle).
+
+### Layer Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 5c: Runtime Contracts (§10-11)                         │
+│   Caching, Tracing, Safety Policies, Conditions/Restarts    │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 5b: Protocol Libraries (§8)                            │
+│   chat-turn, tool-loop, rag, complete, repl, log-stream     │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 5a: Abstraction Mechanisms (§9)                        │
+│   defprompt, deftransform, defop, deftool, defgraph         │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 4d: Execution Algebra (§7) - Means of Combination      │
+│   bind, branch, retry-until, all/race/par-map, streaming    │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 4c: Prompt Algebra (§6) - Means of Combination         │
+│   prompt+, transformers, templates, as-data                 │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 4b: Kernel Primitives (§5) - Primitive Expressions     │
+│   infer, embed, retrieve, call-tool, validate, commit       │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 4a: Data Model (§3-4) - Primitive Expressions          │
+│   Message, Prompt, Artifact, Flow, ToolSpec, Provenance     │
+├═════════════════════════════════════════════════════════════┤
+│ Layer 3: Effect System (OmegaLLM provides) ✓                 │
+│   conditions, handlers, restarts, amb, oracle effects       │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 2: Standard Library (OmegaLLM provides) ✓              │
+│   streams, nondet, concurrency, constraints, generic        │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 1: Core Language (OmegaLLM provides) ✓                 │
+│   CEKS machine, lambda, define, if, macros                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Layer 4a: Data Model (§3-4) — 11 Primitive Types
+
+These are the **primitive data types** for LLM programming. Like `cons` cells for lists.
+
+| # | Symbol | Source | Type/Fields | Purpose | OmegaLLM |
+|---|--------|--------|-------------|---------|----------|
+| 1 | `Message` | §3.1 | `{role, content, name?, tool-call-id?, mime-type?, timestamp?, tags?, provenance?}` | Role-tagged message unit | **MISSING** |
+| 2 | `Message.role` | §3.1 | `:system \| :developer \| :user \| :assistant \| :tool \| :context` | Message source classification | **MISSING** |
+| 3 | `Prompt` | §3.2 | `{messages: Message[], vars: Map, policy: PolicySpec, meta: Map}` | Immutable prompt container | **MISSING** |
+| 4 | `PromptTemplate` | §3.3 | Callable with `render(bindings) → Prompt` and `partial(bindings) → PromptTemplate` | Parameterized prompt factory | **MISSING** |
+| 5 | `Artifact[A]` | §3.4 | `{value: A, provenance: Provenance, diagnostics: List, metrics: Map}` | Value with full derivation history | Partial (provenance exists) |
+| 6 | `ToolSpec` | §3.5 | `{name, doc, input-schema, output-schema, fn, purity, timeout?, retry?, authz?}` | Complete tool definition | Partial (basic tools) |
+| 7 | `ToolSpec.purity` | §3.5 | `:pure \| :idempotent \| :effectful` | Tool effect classification for caching/retry | **MISSING** |
+| 8 | `Provenance` | §3.6 | `{source-ids, tool-lineage, retrieval-docs, model-id, hashes}` | Full derivation DAG | ✓ [provenance/graph.ts](../src/core/provenance/graph.ts) |
+| 9 | `Flow[A]` | §4.1 | First-class program yielding `Artifact[A]` or `EventStream` | Effectful computation unit | **MISSING** (use monadic effects) |
+| 10 | `EventStream` | §4.2 | Bounded/unbounded stream with backpressure, cancellation, fanout | Async event sequence | Partial (streams exist) |
+| 11 | `Event` | §4.2 | `:token \| :delta \| :tool-call \| :tool-result \| :retrieval \| :trace \| :error \| :done` | Stream event discriminant | **MISSING** |
+
+**Closure Property**: `Message` + `Message` → `Prompt` → `Prompt + Prompt` → `Prompt` (closed under `prompt+`)
+
+---
+
+### Layer 4b: Kernel Primitives (§5) — 9 Operations
+
+These are the **ONLY** operations that require a runtime handler. Everything else is definable in terms of these. Like `eval` and `apply` - the primitives everything builds on.
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM | File |
+|---|--------|--------|-----------|---------|----------|------|
+| 12 | `infer` | §5.1 | `(infer prompt &key model decoding tools response-format policy) => Flow[Completion]` | Submit prompt to LLM, get completion | ✓ Partial | [oracle/portal.ts](../src/core/oracle/portalImpl.ts) |
+| 13 | `infer/stream` | §5.1 | `(infer/stream prompt &key ...) => Flow[Completion]` | Streaming inference with token events | ✓ Partial | [oracle/portal.ts](../src/core/oracle/portalImpl.ts) |
+| 14 | `embed` | §5.2 | `(embed items &key model) => Flow[VectorEmbeddings]` | Generate vector embeddings | **MISSING** | — |
+| 15 | `retrieve` | §5.3 | `(retrieve query &key index top-k filter rerank) => Flow[DocSet]` | RAG retrieval from vector store | **MISSING** | — |
+| 16 | `call-tool` | §5.4 | `(call-tool tool-name args &key timeout) => Flow[ToolResult]` | Invoke tool with schema validation | ✓ Partial | [prims.ts :ReqTool](../src/core/prims.ts) |
+| 17 | `emit` | §5.5 | `(emit sink item &key format) => Flow[Ok]` | Output to external sink | **MISSING** | — |
+| 18 | `observe` | §5.5 | `(observe source &key format) => Flow[Item]` | Input from external source | **MISSING** | — |
+| 19 | `validate` | §5.6 | `(validate spec value &key explain) => Flow[Validation]` | Schema/predicate/contract validation | **MISSING** | — |
+| 20 | `commit` | §5.7 | `(commit store key value &key ttl) => Flow[Ok]` | Persist to durable store | ✓ Partial | [eval/store.ts :COWStore](../src/core/eval/store.ts) |
+
+**Why Minimal**: These 9 operations are the "instruction set" for LLM programs. Everything else (chat, RAG, tool loops) is **definable** using these primitives + the execution algebra below.
+
+---
+
+### Layer 4c: Prompt Artifact Algebra (§6) — 17 Combination Operators
+
+**Pure operations on prompts** - no LLM calls. The "cons/car/cdr" layer for prompts.
+
+#### Message Constructors (4 items)
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 21 | `system` | §6.1 | `(system text &key name tags meta) => Message` | Create system instruction message | **MISSING** |
+| 22 | `user` | §6.1 | `(user text &key name tags meta) => Message` | Create user input message | **MISSING** |
+| 23 | `assistant` | §6.1 | `(assistant text &key name tags meta) => Message` | Create assistant response message | **MISSING** |
+| 24 | `tool` | §6.1 | `(tool name payload &key tool-call-id) => Message` | Create tool result message | **MISSING** |
+
+#### Prompt Construction & Concatenation (2 items)
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 25 | `prompt` | §6.1 | `(prompt &rest messages-or-prompts) => Prompt` | Construct prompt (flattens nested) | **MISSING** |
+| 26 | `prompt+` | §6.2 | `(prompt+ p1 p2 &rest ps) => Prompt` | Concatenate prompts (associative, non-commutative) | **MISSING** |
+
+**Algebraic Law**: `(prompt+ (prompt+ a b) c) = (prompt+ a (prompt+ b c))` (associativity)
+
+#### Prompt Transformers (7 items)
+
+A `PromptTransformer` is `Prompt → Prompt`. Transformers compose: `T1 ∘ T2` is also a transformer.
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 27 | `with-system` | §6.3 | `(with-system text) => PromptTransformer` | Prepend system instruction | **MISSING** |
+| 28 | `with-policy` | §6.3 | `(with-policy policy-spec) => PromptTransformer` | Attach policy constraints | **MISSING** |
+| 29 | `with-tools` | §6.3 | `(with-tools toolset) => PromptTransformer` | Declare available tools | **MISSING** |
+| 30 | `with-examples` | §6.3 | `(with-examples examples) => PromptTransformer` | Add few-shot examples | **MISSING** |
+| 31 | `with-context` | §6.3 | `(with-context docs) => PromptTransformer` | Inject RAG context documents | **MISSING** |
+| 32 | `with-guard` | §6.3 | `(with-guard guard-spec) => PromptTransformer` | Add safety/format guard | **MISSING** |
+| 33 | `compose-transformers` | §6.3 | `(compose-transformers t1 t2 ...) => PromptTransformer` | Compose transformers | **MISSING** |
+
+**Closure Property**: `PromptTransformer ∘ PromptTransformer → PromptTransformer` (closed under composition)
+
+#### Templates & Partial Application (3 items)
+
+This is where **currying** lives for prompts.
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 34 | `defprompt` | §6.4 | `(defprompt name (vars...) template-body...)` | Define parameterized prompt template | **MISSING** |
+| 35 | `render` | §6.4 | `(render template &key bindings) => Prompt` | Fully instantiate template | **MISSING** |
+| 36 | `partial` | §6.4 | `(partial template &key bindings) => PromptTemplate` | **Curry** template (partial application) | **MISSING** |
+
+**Example**:
+```lisp
+(defprompt write-song (topic style)
+  (prompt (system "You are a songwriter.")
+          (user (format "Write a ~a song about ~a." style topic))))
+
+;; Partial application creates specialized template
+(define rock-song (partial write-song :style "rock"))
+(render rock-song :topic "summer")  ; Full prompt
+```
+
+#### Security: Data Quoting (1 item)
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 37 | `as-data` | §6.5 | `(as-data x &key fence mime) => string` | Quote/fence data to prevent prompt injection | **MISSING** |
+
+**Critical**: User-controlled content MUST be quoted when embedded in instructions.
+
+---
+
+### Layer 4d: Execution Algebra (§7) — 21 Effect Combinators
+
+**Means of combination** for effectful operations. These map to OmegaLLM's existing effect system.
+
+#### Sequential Composition (6 items)
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM | Notes |
+|---|--------|--------|-----------|---------|----------|-------|
+| 38 | `pure` | §7.1 | `(pure x) => Flow[X]` | Lift pure value into Flow | ✓ `unit` | [prims.ts](../src/core/prims.ts) |
+| 39 | `mapf` | §7.1 | `(mapf f flow) => Flow[Y]` | Transform result (functor map) | Partial | Via `bind` |
+| 40 | `bind` | §7.1 | `(bind flow f) => Flow[Y]` | Chain computations (Kleisli composition) | ✓ `bind` | [prims.ts](../src/core/prims.ts) |
+| 41 | `tap` | §7.1 | `(tap flow side-effect) => Flow[X]` | Side effect without changing value | **MISSING** | Easy to add |
+| 42 | `flow` | §7.1 | `(flow (let* ((x (<! ...))) ...))` | Monadic do-notation macro | **MISSING** | Macro |
+| 43 | `<!` | §7.1 | `(<! flow)` | Bind-extract inside `flow` macro | **MISSING** | Macro |
+
+**Monad Laws** (must hold):
+- Left identity: `(bind (pure a) f) = (f a)`
+- Right identity: `(bind m pure) = m`
+- Associativity: `(bind (bind m f) g) = (bind m (λx. bind (f x) g))`
+
+#### Branching & Loops (2 items)
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 44 | `branch` | §7.2 | `(branch flow (:when pred then) ... (:else else))` | Content-based routing on Flow result | **MISSING** |
+| 45 | `retry-until` | §7.3 | `(retry-until flow :validate :repair :max-tries :backoff)` | Generate-validate-repair loop | **MISSING** |
+
+**`retry-until`** is the canonical pattern for robust LLM output:
+```lisp
+(retry-until
+  (infer prompt)
+  :validate (lambda (r) (valid-json? r))
+  :repair   (lambda (r) (infer (prompt+ prompt (user "Fix JSON: " r))))
+  :max-tries 3)
+```
+
+#### Parallel Composition (6 items)
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 46 | `all` | §7.4 | `(all &rest flows) => Flow[(values ...)]` | Wait for all (parallel), collect results | **MISSING** |
+| 47 | `race` | §7.4 | `(race &rest flows) => Flow[A]` | First to complete wins, cancel others | **MISSING** |
+| 48 | `par-map` | §7.4 | `(par-map f items &key max-par) => Flow[list]` | Parallel map with bounded concurrency | **MISSING** |
+| 49 | `par-flatmap` | §7.4 | `(par-flatmap f items &key max-par) => Flow[list]` | Parallel flatmap | **MISSING** |
+| 50 | `with-timeout` | §7.5 | `(with-timeout ms flow) => Flow[A]` | Timeout wrapper | **MISSING** |
+| 51 | `with-budget` | §7.5 | `(with-budget budget-spec flow) => Flow[A]` | Budget constraints (tokens, cost, time) | Partial | [budgets.ts](../src/core/governance/budgets.ts) |
+
+#### Cancellation (1 item)
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 52 | `cancel` | §7.5 | `(cancel flow) => Flow[Ok]` | Cancel in-progress flow | **MISSING** |
+
+#### Streaming Combinators (6 items)
+
+These operate on `EventStream` from streaming inference.
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 53 | `stream-map` | §7.6 | `(stream-map f es) => EventStream` | Map over events | Build on [stream.ts](../src/core/stream/stream.ts) |
+| 54 | `stream-filter` | §7.6 | `(stream-filter pred es) => EventStream` | Filter events | Build on streams |
+| 55 | `stream-take` | §7.6 | `(stream-take n es) => EventStream` | Take first n events | Build on streams |
+| 56 | `stream-merge` | §7.6 | `(stream-merge &rest es) => EventStream` | Fair merge (interleave) | **MISSING** (= stream-interleave) |
+| 57 | `stream-zip` | §7.6 | `(stream-zip es1 es2) => EventStream` | Zip two streams | Build on streams |
+| 58 | `stream-reduce` | §7.6 | `(stream-reduce f init es) => Flow[result]` | Reduce stream to final value | Build on streams |
+
+---
+
+### Layer 5a: Abstraction Mechanisms (§9) — 8 Definition Forms
+
+**Means of abstraction** - naming and encapsulating patterns.
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 59 | `defprompt` | §9.1 | `(defprompt name (vars) body)` | Define reusable prompt template | **MISSING** |
+| 60 | `deftransform` | §9.2 | `(deftransform name () body)` | Define prompt transformer (persona, style) | **MISSING** |
+| 61 | `defop` | §9.3 | `(defop name (args) body)` | Define named Flow operator with contracts | **MISSING** |
+| 62 | `deftool` | §9.3 | `(deftool name :input-schema :output-schema :purity fn)` | Define tool with full spec | **MISSING** |
+| 63 | `defschema` | §9.4 | `(defschema name spec)` | Define reusable validation schema | **MISSING** |
+| 64 | `defgraph` | §9.5 | `(defgraph name (state) (node ...) (edge ...))` | Define state machine agent | **MISSING** |
+| 65 | `workflow` | §9.4 | `(workflow ...)` | Workflow DSL macro | **MISSING** |
+| 66 | `with-*` | §9.4 | `with-runtime, with-model, with-policy, with-cache, with-trace` | Context decorators | **MISSING** |
+
+---
+
+### Layer 5b: Protocol Libraries (§8) — 8 Standard Patterns
+
+**Libraries built on the kernel** - the "magical subtypes" made explicit and composable.
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 67 | `Conversation` | §8.1 | `{history: Message[], memory: Map, policy: Policy}` | Stateful chat context | **MISSING** |
+| 68 | `chat-turn` | §8.1 | `(chat-turn conv user-msg &key persona tools) => Flow[(reply, conv')]` | Single turn of multi-turn chat | **MISSING** |
+| 69 | `tool-loop` | §8.2 | `(tool-loop prompt &key tools max-steps) => Flow[Completion]` | ReAct-style tool use loop | **MISSING** |
+| 70 | `rag` | §8.3 | `(rag query :retrieve :compose-prompt :answer) => Flow[Answer]` | Retrieval-augmented generation | **MISSING** |
+| 71 | `complete` | §8.4 | `(complete prefix &key system decoding) => Flow[string]` | Single-shot completion | **MISSING** |
+| 72 | `repl-protocol` | §8.5 | Lisp REPL stream integration | Interactive inference | **MISSING** |
+| 73 | `log-stream` | §8.6 | Stream processor with bounded inference | Event classification pipeline | **MISSING** |
+| 74 | EIP patterns | §8.3 | Splitter, Aggregator, Content Enricher, Router | Enterprise integration patterns | **MISSING** |
+
+**`tool-loop` Semantics** (§8.2):
+```
+1. infer
+2. if tool-call(s) present:
+   - validate tool args against schema
+   - call tool(s) (parallel if safe)
+   - append tool result messages
+   - repeat from 1
+3. else return completion
+```
+
+---
+
+### Layer 5c: Runtime Contracts (§10-11) — 10 Operational Requirements
+
+| # | Symbol | Source | Signature | Purpose | OmegaLLM |
+|---|--------|--------|-----------|---------|----------|
+| 75 | `Runtime` | §10.1 | `{model-backend, retriever-backend, tool-registry, cache, scheduler, tracer, policy-engine, clock}` | Pluggable execution context | Partial |
+| 76 | Effect handlers | §10.2 | `handle-infer, handle-retrieve, handle-call-tool, ...` | Backend implementations | Partial |
+| 77 | Cache-key derivation | §10.3 | `normalize(prompt) + model + params → key` | Deterministic cache keys | **MISSING** |
+| 78 | Cache tiers | §10.3 | In-memory LRU + persistent store + TTL | Multi-level caching | Partial |
+| 79 | Tracing spans | §10.4 | Start/end span, per-step metrics, redacted tool args | Structured observability | Partial |
+| 80 | Policy object | §11 | Tool allowlist/denylist, max calls, fencing rules, redaction, gates | Safety controls | **MISSING** |
+
+#### Conditions & Restarts (§12.3) — 4 items
+
+| # | Symbol | Source | Type | Purpose | OmegaLLM |
+|---|--------|--------|------|---------|----------|
+| 81 | `inference-error` | §12.3 | Condition | LLM call failure | **MISSING** |
+| 82 | `tool-error` | §12.3 | Condition | Tool invocation failure | **MISSING** |
+| 83 | `validation-error` | §12.3 | Condition | Schema validation failure | **MISSING** |
+| 84 | Restarts | §12.3 | `retry-step, fallback, skip, use-value, abort-run, reduce-scope` | Error recovery strategies | **MISSING** |
+
+---
+
+### FrameLisp Coverage Summary (84 Items)
+
+| Layer | Category | Items | Implemented | Partial | Missing | Coverage |
+|-------|----------|-------|-------------|---------|---------|----------|
+| **4a** | Data Model | 11 | 1 | 3 | 7 | **9%** |
+| **4b** | Kernel Primitives | 9 | 0 | 4 | 5 | **0%** |
+| **4c** | Prompt Algebra | 17 | 0 | 0 | 17 | **0%** |
+| **4d** | Execution Algebra | 21 | 2 | 7 | 12 | **10%** |
+| **5a** | Abstractions | 8 | 0 | 0 | 8 | **0%** |
+| **5b** | Protocols | 8 | 0 | 0 | 8 | **0%** |
+| **5c** | Runtime Contracts | 10 | 0 | 3 | 7 | **0%** |
+| | **TOTAL** | **84** | **3** | **17** | **64** | **4%** |
+
+**Legend**: Implemented = production ready, Partial = exists but incomplete, Missing = not implemented
+
+---
+
+### FrameLisp Implementation Phases
+
+**Phase F1: Data Model + Kernel (19 items)** — Foundation
+- [ ] Message type with roles
+- [ ] Prompt type with policy, vars, meta
+- [ ] `prompt`, `prompt+` constructors
+- [ ] `system`, `user`, `assistant`, `tool` message constructors
+- [ ] Wire `infer` to proper Prompt type
+- [ ] Add `validate` primitive
+- [ ] Add `embed`, `retrieve` primitives
+
+**Phase F2: Prompt Algebra (13 items)** — Combination
+- [ ] `with-system`, `with-tools`, etc. transformers
+- [ ] `compose-transformers`
+- [ ] `defprompt`, `render`, `partial` template system
+- [ ] `as-data` quoting for injection prevention
+
+**Phase F3: Execution Algebra (15 items)** — Effects
+- [ ] `tap`, `branch`, `retry-until`
+- [ ] `all`, `race`, `par-map`, `par-flatmap`
+- [ ] `with-timeout`, `cancel`
+- [ ] `flow` / `<!` macros
+- [ ] Stream combinators for EventStream
+
+**Phase F4: Abstractions (8 items)** — Naming
+- [ ] `deftransform`, `defop`, `deftool`, `defschema`
+- [ ] `defgraph` for state machines
+- [ ] `workflow` DSL
+
+**Phase F5: Protocols (8 items)** — Patterns
+- [ ] `chat-turn`, `tool-loop`, `rag`, `complete`
+- [ ] EIP patterns (Splitter, Aggregator, Router)
+
+**Phase F6: Runtime (10 items)** — Operations
+- [ ] Cache-key derivation with prompt normalization
+- [ ] Policy object with safety controls
+- [ ] Conditions: `inference-error`, `tool-error`, `validation-error`
+- [ ] Restarts: `retry-step`, `fallback`, `skip`, `use-value`
+
+---
+
 ## 1. STREAMS (Lazy/SICP-style)
 
 ### Summary
