@@ -35,7 +35,7 @@ Each job file includes:
 |--------|-------|----------|--------|------------|
 | [005](./005-NON-UNWINDING-CONDITIONS.md) | Non-Unwinding Conditions | P1 - Important | ✅ DONE | **004** |
 | [006](./006-MONADIC-PRIMITIVES.md) | Monadic Primitives (unit/bind/mzero/mplus) | P1 - Important | NOT STARTED | - (can parallel with 004) |
-| [007](./007-FULL-PROVENANCE-SYSTEM.md) | Full Provenance System | P1 - Important | NOT STARTED | 004 (Task 2) |
+| [007](./007-FULL-PROVENANCE-SYSTEM.md) | Full Provenance System | P1 - Important | ✅ DONE | 004 (Task 2) |
 
 ### Phase C: Patterns
 

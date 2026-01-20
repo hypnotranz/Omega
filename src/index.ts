@@ -70,3 +70,13 @@ export {
 
 export type { CtxReceipt } from "./core/oracle/ctxReceipts";
 export { CtxReceiptRepo } from "./core/oracle/ctxReceipts";
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROVENANCE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export { ProvenanceGraph } from "./core/provenance/graph";
+export type { ProvenanceGraphData, StalenessReport, StaleItem, SourceChecker } from "./core/provenance/graph";
+export { evidenceId, computeSourceHash } from "./core/provenance/evidence";
+export { FileProvenanceStore } from "./core/provenance/store/file";
+export type { ProvenanceStore, StoredReceipt, ReceiptFilter } from "./core/provenance/store/interface";

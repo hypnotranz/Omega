@@ -6,6 +6,10 @@
 import type { Val } from "../eval/values";
 import type { DistVal } from "../eval/dist";
 import type { Expr } from "../ast";
+import type { Evidence } from "../provenance/evidence";
+import { evidenceToVal } from "../provenance/evidence";
+
+export type { Evidence, OracleEvidence, TransformEvidence, DerivedEvidence } from "../provenance/evidence";
 
 /**
  * Obligation types for governing program transformations.
@@ -16,14 +20,6 @@ export type Obligation =
   | { tag: "OblIdempotent"; f: Expr; domain?: Val }              // f(f(x)) = f(x)
   | { tag: "OblNoMatch"; pattern: Expr; scope: "output" | "all" } // pattern must not appear
   | { tag: "OblEqExt"; original: Expr; candidate: Expr; tests: Expr[]; envRef: string }; // extensional equivalence
-
-/**
- * Evidence of obligation discharge.
- */
-export type Evidence =
-  | { tag: "TestEvidence"; passed: number; total: number; receipt?: string }
-  | { tag: "NoMatchEvidence"; pattern: Expr; searched: number; found: number }
-  | { tag: "EqExtEvidence"; tests: number; allPassed: boolean; failures?: Array<{ input: Val; expected: Val; got: Val }> };
 
 /**
  * Rewrite trace step for debugging and audit.
@@ -101,15 +97,7 @@ export function meaningToVal(m: MeaningVal): Val {
   if (m.obligation) entries.push([vStr("obligation"), m.obligation]);
   // Convert Evidence[] to Val (vector of maps) if present
   if (m.evidence) {
-    const evidenceItems: Val[] = m.evidence.map(e => {
-      const evidenceEntries: Array<[Val, Val]> = [[vStr("tag"), vStr(e.tag)]];
-      if (e.tag === "TestEvidence") {
-        evidenceEntries.push([vStr("passed"), vNum(e.passed)]);
-        evidenceEntries.push([vStr("total"), vNum(e.total)]);
-        if (e.receipt) evidenceEntries.push([vStr("receipt"), vStr(e.receipt)]);
-      }
-      return { tag: "Map" as const, entries: evidenceEntries };
-    });
+    const evidenceItems: Val[] = m.evidence.map(e => evidenceToVal(e));
     entries.push([vStr("evidence"), { tag: "Vector", items: evidenceItems }]);
   }
   if (m.trace) entries.push([vStr("trace"), m.trace as Val]);

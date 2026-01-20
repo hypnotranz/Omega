@@ -4,7 +4,7 @@ import { envSet } from "../../src/core/eval/env";
 import type { State } from "../../src/core/eval/machine";
 import type { Val } from "../../src/core/eval/values";
 import type { MeaningVal, Evidence } from "../../src/core/oracle/meaning";
-import { sha256JSON } from "../../src/core/artifacts/hash";
+import { evidenceId } from "../../src/core/provenance/evidence";
 import { compileTextToExpr } from "../../src/core/pipeline/compileText";
 import { installPrims } from "../helpers/prims";
 import { runToCompletion } from "../../src/core/eval/run";
@@ -52,7 +52,7 @@ function expectBool(v: Val): boolean {
 describe("Evidence primitives", () => {
   const ev: Evidence = { tag: "TestEvidence", passed: 1, total: 1 };
   const meaning: MeaningVal = { tag: "Meaning", denotation: { tag: "Num", n: 4 }, evidence: [ev] };
-  const meaningId = sha256JSON(meaning.evidence);
+  const meaningId = evidenceId(ev);
 
   it("evidence-id returns a stable id for Meaning with evidence", async () => {
     const result = await evalWithBindings(`(evidence-id m)`, { m: meaning as Val });

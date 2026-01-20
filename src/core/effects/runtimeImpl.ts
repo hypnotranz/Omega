@@ -27,6 +27,9 @@ import { runOracleSession } from "../oracle/driver";
 import { isMeaning, meaning as mkMeaning, type MeaningVal, type Obligation, type Evidence } from "../oracle/meaning";
 import { matchAST } from "../oracle/match";
 import { distFrom, type DistVal } from "../eval/dist";
+import { computeSourceHash, type OracleEvidence } from "../provenance/evidence";
+import type { StoredReceipt } from "../provenance/store/interface";
+import { sha256JSON } from "../artifacts/hash";
 
 // Governance imports
 import type { Profile } from "../governance/profile";
@@ -71,6 +74,33 @@ function obligationSatisfied(m: MeaningVal): boolean {
   if ((o as any).tag === "Bool") return !!(o as any).b;
   if ((o as any).tag === "Obligation" && (o as any).status === "satisfied") return true;
   return false;
+}
+
+function needsProvenance(state: State): boolean {
+  return !!state.provenanceGraph || !!state.provenanceStore;
+}
+
+async function attachOracleEvidence(meaning: MeaningVal, payload: Val, state: State): Promise<MeaningVal> {
+  if (!needsProvenance(state)) return meaning;
+
+  const timestamp = Date.now();
+  const receiptId = sha256JSON({ payload, timestamp });
+  const evidence: OracleEvidence = {
+    tag: "OracleEvidence",
+    receiptId,
+    sourceHash: computeSourceHash(payload),
+    timestamp,
+  };
+
+  state.provenanceGraph?.addNode(evidence);
+
+  if (state.provenanceStore) {
+    const receipt: StoredReceipt = { id: receiptId, timestamp, request: payload, response: meaning };
+    await state.provenanceStore.storeReceipt(receipt);
+  }
+
+  const evidenceList = meaning.evidence ? meaning.evidence.concat([evidence]) : [evidence];
+  return { ...meaning, evidence: evidenceList };
 }
 
 export class RuntimeImpl implements Runtime {
@@ -194,6 +224,7 @@ export class RuntimeImpl implements Runtime {
     // - search.op: returns Dist<Meaning> for multi-shot search
     if (opName === "int.op" || opName === "infer.op" || opName === "rewrite.op" || opName === "search.op") {
       const kind: InferKind = opName === "search.op" ? "search" : opName === "rewrite.op" ? "rewrite" : "int";
+      const needProv = needsProvenance(state);
 
       // Consume oracle turn budget
       this.budget?.consumeOracleTurn();
@@ -229,8 +260,8 @@ export class RuntimeImpl implements Runtime {
           });
 
           const meaning = await runOracleSession(session, portal);
-          // runOracleSession always returns Meaning (MeaningVal), which is a Val
-          items.push({ v: meaning as Val, w: 1 });
+          const enriched = needProv ? await attachOracleEvidence(meaning as MeaningVal, payload, state) : meaning;
+          items.push({ v: enriched as Val, w: 1 });
         }
 
         const d: DistVal = distFrom(items, { kind: "search", note: `n=${n}` });
@@ -246,6 +277,10 @@ export class RuntimeImpl implements Runtime {
       });
 
       const meaning = await runOracleSession(session, portal);
+      let enrichedMeaning = meaning as MeaningVal;
+      if (needProv) {
+        enrichedMeaning = await attachOracleEvidence(enrichedMeaning, payload, state);
+      }
 
       // Optional: if oracle asked to adopt a modified env, patch state
       const adoptEnv = portal.consumeAdoptEnvRef() ?? meaning.adoptEnvRef;
@@ -258,11 +293,11 @@ export class RuntimeImpl implements Runtime {
       // int.op and rewrite.op: Return the full Meaning as a first-class value
       if (opName === "int.op" || opName === "rewrite.op") {
         // runOracleSession always returns Meaning (MeaningVal), which is a Val
-        return opcall.resumption.invoke(meaning as Val);
+        return opcall.resumption.invoke(enrichedMeaning as Val);
       }
 
       // infer.op: Return the denotation directly (backward compatible)
-      const resultVal = meaning.denotation ?? ({ tag: "Unit" } as Val);
+      const resultVal = enrichedMeaning.denotation ?? ({ tag: "Unit" } as Val);
       return opcall.resumption.invoke(resultVal);
     }
 

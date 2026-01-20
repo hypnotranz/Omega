@@ -174,7 +174,8 @@ LambdaRLM's unique strength is **strategic problem solving**:
 │  │ • nondet.lisp       │ │ • conditions (spec) │ │ • nondet/ ✓         │    │
 │  │ • budget.lisp       │ │ • budget (spec)     │ │ • concurrency/ ✓    │    │
 │  │ • yield.lisp        │ │                     │ │ • constraints/ ✓    │    │
-│  │ • unit/mzero/mplus  │ │                     │ │ • (missing monadic) │    │
+│  │ • unit/mzero/mplus  │ │                     │ │ • unit/mzero/mplus ✓│    │
+│  │                     │ │                     │ │ • conditions/ ✓     │    │
 │  └─────────────────────┘ └─────────────────────┘ └─────────────────────┘    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  LAYER 2: ORACLE & PROVENANCE                                                │
@@ -183,7 +184,8 @@ LambdaRLM's unique strength is **strategic problem solving**:
 │  │ • Python LLM calls  │ │ • Evidence model    │ │ • oracle/ ✓         │    │
 │  │ • provenance.lisp   │ │ • ProvenanceGraph   │ │ • receipts.ts ✓     │    │
 │  │                     │ │ • verifyEvidence()  │ │ • portal.ts ✓       │    │
-│  │                     │ │ • EpistemicMode     │ │ • (partial evidence)│    │
+│  │                     │ │ • EpistemicMode     │ │ • provenance/ ✓     │    │
+│  │                     │ │                     │ │ • ProvenanceGraph ✓ │    │
 │  └─────────────────────┘ └─────────────────────┘ └─────────────────────┘    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  LAYER 1: EVALUATION CORE                                                    │
@@ -259,16 +261,21 @@ LEGEND:
 - **LambdaRLM**: No continuation support at all
 - **Impact**: Can't implement non-local control flow patterns
 
-### Gap 2: Evidence Model
+### ~~Gap 2: Evidence Model~~ ✅ FIXED (2026-01-19)
 - **LambdaLLM**: Rich evidence with verification, staleness, epistemic modes
-- **OmegaLLM**: Receipts exist but no evidence model
+- **OmegaLLM**: ~~Receipts exist but no evidence model~~ **NOW HAS**: Full provenance system with `ProvenanceGraph`, `OracleEvidence`, `TransformEvidence`, `DerivedEvidence`, plus primitives `provenance-trace`, `provenance-record`, `provenance-check-staleness`
 - **LambdaRLM**: Basic provenance tracking
-- **Impact**: Can't trace claims back to sources, can't prevent hallucination propagation
+- **Implementation**: [src/core/provenance/](../src/core/provenance/) - graph.ts, evidence.ts, prims.ts
 
-### Gap 3: Monadic Primitives
+### ~~Gap 3: Monadic Primitives~~ ✅ FIXED (2026-01-19)
 - **LambdaRLM**: Has `unit`, `mzero`, `mplus`, `bind` (List monad)
-- **OmegaLLM**: Has `amb` but no explicit monadic interface
-- **Impact**: Harder to compose nondeterministic computations cleanly
+- **OmegaLLM**: ~~Has `amb` but no explicit monadic interface~~ **NOW HAS**: `unit`, `mzero`, `mplus`, `bind` with `KBind` frame
+- **Implementation**: [src/core/prims.ts:173-194](../src/core/prims.ts#L173-L194), [src/core/eval/machine.ts:34](../src/core/eval/machine.ts#L34)
+
+### ~~Gap 5: Non-Unwinding Conditions~~ ✅ FIXED (2026-01-19)
+- **LambdaLLM**: CL-style condition system specified
+- **OmegaLLM**: **NOW HAS**: Full condition system with `signal`, `error`, `handler-bind`, `restart-bind`, `invoke-restart`, `find-restart`, `compute-restarts`
+- **Implementation**: [src/core/conditions/](../src/core/conditions/) - types.ts, frames.ts, prims.ts
 
 ### Gap 4: World Abstraction
 - **LambdaRLM Python**: InMemoryWorld, FileWorld, StagedWorld
@@ -1124,7 +1131,7 @@ pipeline/       - Compilation pipeline
 ### P1: High-Value Ports
 | Component | From | To | Effort | Benefit |
 |-----------|------|-----|--------|---------|
-| `unit/mzero/mplus/bind` | LambdaRLM | OmegaLLM | Medium | Monadic combinators |
+| ~~`unit/mzero/mplus/bind`~~ | LambdaRLM | OmegaLLM | ~~Medium~~ | ~~Monadic combinators~~ ✅ DONE |
 | `repair_loop.lisp` pattern | LambdaRLM | OmegaLLM | Medium | Explicit retry-until |
 | `stream-interleave` | LambdaRLM | OmegaLLM | Low | Fair stream merge |
 | `budget-split/allocate` | LambdaRLM | OmegaLLM | Low | Parallel work allocation |
@@ -1162,7 +1169,9 @@ pipeline/       - Compilation pipeline
 | **Budget** | Yes | Spec | Yes ✓ | Spec |
 | **CEKS Introspection** | No | No | **Yes ✓** (unique) | No |
 | **call/cc** | No | **Yes** (spec) | No | No |
-| **Evidence Model** | Partial | **Yes** (spec) | Partial | No |
+| **Evidence Model** | Partial | **Yes** (spec) | **Yes ✓** (provenance/) | No |
+| **Monadic (unit/mzero/mplus/bind)** | Yes | No | **Yes ✓** | No |
+| **Non-unwinding Conditions** | No | **Yes** (spec) | **Yes ✓** (conditions/) | No |
 | **Domain Algebra** | **Yes** (unique) | No | No | No |
 | **Meta-Search** | **Yes** (unique) | No | No | No |
 | **Composable Solvers** | **Yes** (unique) | No | No | No |
@@ -1202,23 +1211,25 @@ Before implementing anything, here's what OmegaLLM **already has** vs what's **a
 
 | Worklist Item | What OmegaLLM Has | Gap | Effort |
 |---------------|-------------------|-----|--------|
-| **unit/mzero/mplus/bind** | `amb` effect exists but no monadic interface | Add monad.ts | **Low (4h)** |
+| ~~**unit/mzero/mplus/bind**~~ | ~~`amb` effect exists but no monadic interface~~ | ~~Add monad.ts~~ | ✅ **DONE** |
 | **stream-interleave** | Just a comment in runtimeImpl.ts | Add actual implementation | **Low (2h)** |
 | **budget-split/allocate** | Budget system in [budgets.ts](../src/core/governance/budgets.ts) | Add split/allocate functions | **Low (2h)** |
-| **Non-unwinding conditions** | Actor supervisors have restart/resume (different thing) | Need Lisp-style condition system | **Medium (8h)** |
+| ~~**Non-unwinding conditions**~~ | ~~Actor supervisors have restart/resume (different thing)~~ | ~~Need Lisp-style condition system~~ | ✅ **DONE** |
 
-**Verdict**: Most are simple additions. Non-unwinding conditions need design.
+**Verdict**: ~~Most are simple additions. Non-unwinding conditions need design.~~ **UPDATE**: Monadic primitives and conditions are now DONE.
 
 ### Summary Table
 
 | Category | Items | Already Have | Need to Add | Total Effort |
 |----------|-------|--------------|-------------|--------------|
 | **Continuations** | 3 | 2 partial | 1 (call/cc primitive) | ~8h |
-| **Evidence** | 4 | 2 partial | 2 (graph, persistence) | ~2-3d |
-| **Monadic/Effects** | 4 | 0 | 4 | ~16h |
-| **Conditions** | 1 | 0 (actor supervisors are different) | 1 | ~8h |
+| **Evidence** | 4 | ~~2 partial~~ **4 DONE** | ~~2 (graph, persistence)~~ | ✅ Done |
+| **Monadic/Effects** | 4 | ~~0~~ **2 DONE** | ~~4~~ 2 remaining | ~~~16h~~ ~4h |
+| **Conditions** | 1 | ~~0 (actor supervisors are different)~~ **1 DONE** | ~~1~~ 0 | ✅ Done |
 
 **Key Insight**: The hardest items (continuations, evidence types) are **already partially implemented**. We're mostly adding primitives and APIs to expose existing machinery.
+
+> **UPDATE 2026-01-19**: Monadic primitives (unit/mzero/mplus/bind), conditions (signal/error/handler-bind/restart-bind), and provenance system are NOW COMPLETE.
 
 ---
 
@@ -1283,27 +1294,27 @@ Work items ordered from core outward. Each layer builds on the previous.
 
 **Status**: CEKS machine ✅, machine-fork ✅, machine-step ✅, effect handlers with resume ✅ | **Just need call/cc primitive**
 
-### 🟠 LAYER 2: Oracle & Provenance (HIGH - LLM Safety)
+### 🟠 LAYER 2: Oracle & Provenance (HIGH - LLM Safety) - **MOSTLY DONE ✅**
 
 | # | Task | Effort | Why Critical | Unlocks | Already Have |
 |---|------|--------|--------------|---------|--------------|
-| **2.1** | **Evidence model types** | **Low (4h)** | TypedClaim, EvidenceId, EpistemicMode | Provenance tracking | `Evidence` type (3 variants) |
-| **2.2** | **evidence-id / verify-evidence / evidence-stale?** | **Low (4h)** | Core evidence primitives | Hallucination prevention | `evidence?: Evidence[]` in MeaningVal |
-| **2.3** | **ProvenanceGraph** | Medium (1d) | DAG of evidence relationships | Claim tracing | No |
-| **2.4** | **Receipt ledger (RSR-03)** | Medium (1d) | Persistent oracle call records | Replay, audit | `InMemoryReceiptStore` |
+| ~~**2.1**~~ | ~~**Evidence model types**~~ | ✅ **DONE** | TypedClaim, EvidenceId, EpistemicMode | Provenance tracking | `OracleEvidence`, `TransformEvidence`, `DerivedEvidence` |
+| ~~**2.2**~~ | ~~**evidence-id / verify-evidence / evidence-stale?**~~ | ✅ **DONE** | Core evidence primitives | Hallucination prevention | `provenance-trace`, `provenance-check-staleness`, `provenance-record` |
+| ~~**2.3**~~ | ~~**ProvenanceGraph**~~ | ✅ **DONE** | DAG of evidence relationships | Claim tracing | `src/core/provenance/graph.ts` |
+| **2.4** | **Receipt ledger (RSR-03)** | Medium (1d) | Persistent oracle call records | Replay, audit | FileProvenanceStore exists but needs work |
 
-**Status**: Oracle ✅, Receipts (partial) ✅, Evidence types (partial) ✅ | **Need primitives + persistence**
+**Status**: Oracle ✅, Receipts (partial) ✅, Evidence ✅, ProvenanceGraph ✅ | **Receipt persistence still needs work**
 
-### 🟡 LAYER 3: Effects & Control (MEDIUM - Composition)
+### 🟡 LAYER 3: Effects & Control (MEDIUM - Composition) - **MOSTLY DONE ✅**
 
 | # | Task | Effort | Why Critical | Unlocks | Already Have |
 |---|------|--------|--------------|---------|--------------|
-| **3.1** | **unit / mzero / mplus / bind** | **Low (4h)** | Monadic interface for nondet | Cleaner composition | `amb` effect exists |
-| **3.2** | **Non-unwinding conditions** | **Medium (8h)** | Needs call/cc from Layer 1 | Resumable errors | Actor supervisors (different) |
+| ~~**3.1**~~ | ~~**unit / mzero / mplus / bind**~~ | ✅ **DONE** | Monadic interface for nondet | Cleaner composition | `src/core/prims.ts:173-194` + `KBind` frame |
+| ~~**3.2**~~ | ~~**Non-unwinding conditions**~~ | ✅ **DONE** | ~~Needs call/cc from Layer 1~~ | Resumable errors | `src/core/conditions/` - full implementation |
 | **3.3** | **stream-interleave** | **Low (2h)** | Fair merge for search | Better exploration | Comment only in runtimeImpl.ts |
 | **3.4** | **budget-split / budget-allocate** | **Low (2h)** | Parallel work allocation | Resource management | Budget system exists |
 
-**Status**: Streams ✅, Nondet ✅, Concurrency ✅, Constraints ✅ | **Monadic interface + conditions needed (but simple adds)**
+**Status**: Streams ✅, Nondet ✅, Concurrency ✅, Constraints ✅, **Monadic ✅, Conditions ✅** | Only stream-interleave and budget-split remaining
 
 ### 🟢 LAYER 4: Search & Strategy (LOW - Patterns)
 
@@ -1335,13 +1346,13 @@ Work items ordered from core outward. Each layer builds on the previous.
 PHASE A: Core Magic (MUST DO)
 ├── 1.1 Expose call/cc           ← Unlocks everything else
 ├── 1.2 Delimited continuations  ← Better effect scoping
-└── 2.1-2.2 Evidence model       ← LLM safety
+└── 2.1-2.2 Evidence model       ← LLM safety ✅ DONE (2026-01-19)
 
-PHASE B: Clean Composition (SHOULD DO)
-├── 3.1 Monadic primitives       ← Cleaner nondet
-├── 3.2 Non-unwinding conditions ← Resumable errors (needs call/cc)
-├── 3.3 stream-interleave        ← Fair search
-└── 2.3-2.4 Full provenance      ← Complete audit trail
+PHASE B: Clean Composition (SHOULD DO) - **MOSTLY DONE ✅**
+├── 3.1 Monadic primitives       ← Cleaner nondet ✅ DONE (2026-01-19)
+├── 3.2 Non-unwinding conditions ← Resumable errors ✅ DONE (2026-01-19)
+├── 3.3 stream-interleave        ← Fair search (TODO)
+└── 2.3-2.4 Full provenance      ← Complete audit trail ✅ ProvenanceGraph DONE
 
 PHASE C: Patterns (NICE TO HAVE)
 ├── 4.1-4.3 Solver patterns      ← Strategic problem solving
@@ -1391,27 +1402,28 @@ These require no core changes:
 | `stream-interleave` | 2h | src/core/stream/stream.ts, prims.ts |
 | `budget-split` | 1h | src/core/governance/budgets.ts, prims.ts |
 | `budget-allocate` | 1h | src/core/governance/budgets.ts, prims.ts |
-| `unit/mzero/mplus/bind` | 4h | New file: src/core/monad.ts, prims.ts |
+| ~~`unit/mzero/mplus/bind`~~ | ~~4h~~ | ~~New file: src/core/monad.ts, prims.ts~~ ✅ **DONE** |
 
 ## 🔧 MEDIUM EFFORT (Requires Some Core Work)
 
 | Task | Effort | Files to Modify |
 |------|--------|-----------------|
 | `call/cc` exposure | 8h | src/core/eval/machineStep.ts, prims.ts |
-| Evidence types | 4h | New file: src/core/evidence/types.ts |
-| Evidence primitives | 8h | src/core/oracle/receipts.ts, prims.ts |
+| ~~Evidence types~~ | ~~4h~~ | ~~New file: src/core/evidence/types.ts~~ ✅ **DONE** (src/core/provenance/) |
+| ~~Evidence primitives~~ | ~~8h~~ | ~~src/core/oracle/receipts.ts, prims.ts~~ ✅ **DONE** |
 
 ## 🏗️ HIGH EFFORT (Significant Architecture)
 
 | Task | Effort | Impact |
 |------|--------|--------|
-| Full provenance graph | 2-3 days | Complete audit trail |
-| Non-unwinding conditions | 2-3 days | Needs call/cc first |
+| ~~Full provenance graph~~ | ~~2-3 days~~ | ~~Complete audit trail~~ ✅ **DONE** |
+| ~~Non-unwinding conditions~~ | ~~2-3 days~~ | ~~Needs call/cc first~~ ✅ **DONE** (does NOT need call/cc!) |
 | Domain algebra | 1 week | Full rewrite from scratch |
 
 ---
 
 *Document generated: 2026-01-19*
 *Full audit completed: 2026-01-19*
+*Updated with bead completion status: 2026-01-19*
 *Worklist ordered inside-out by layer dependency*
 *Based on REFERENCE-ALGEBRA.md and ARCHITECTURE-EXPLANATION.md formal specifications*
