@@ -12,6 +12,9 @@ config.yaml
 .agent-sessions/
 .beads/
 .claude/
+.agent-questions.log
+.agent-status.log
+agent-activity.log
 
 # IDE
 .idea/

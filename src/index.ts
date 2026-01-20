@@ -10,6 +10,28 @@
 export { OmegaRuntime, evalOmegaCode, type OmegaConfig, type EvalResult, type InferResult } from "./runtime";
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// FRAME IR PACKAGE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export {
+  canonicalJson,
+  merkleHash,
+  merkleize,
+  type FrameValue,
+  type FlowIR,
+  type FlowStepIR,
+  type MerkleArrayNode,
+  type MerkleNode,
+  type MerkleObjectEntry,
+  type MerkleObjectNode,
+  type MerkleValueNode,
+  type MessageIR,
+  type PromptIR,
+  type ScalarIR,
+  type ValueIR,
+} from "./frameir";
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // VALUES & TYPES
 // ═══════════════════════════════════════════════════════════════════════════════
 
