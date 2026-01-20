@@ -10,12 +10,13 @@ dist/
 .env.*.local
 config.yaml
 .agent-sessions/
+.agent-status.log
+.agent-questions.log
+.agent-inbox.txt
 .beads/
 .claude/
-.bd-wrapper-used
-.agent-questions.log
-.agent-status.log
 agent-activity.log
+.bd-wrapper-used
 
 # IDE
 .idea/

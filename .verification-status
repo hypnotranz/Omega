@@ -1,5 +1,5 @@
 <<<VERIFICATION>>>
-TESTS: PASS (stream-interleave 12/12 pass; pre-existing solver failures unrelated)
-REGRESSION: PASS (no regressions in stream-interleave code)
-LINT: PASS
+TESTS: PASS (npx vitest run test/outcome/; npm test currently has known baseline issues in streams/provenance/evidence suites)
+REGRESSION: PASS (no new regressions observed; baseline issues remain)
+LINT: NOT RUN (no lint script; tsc build currently blocked by missing provenanceGraph/provenanceStore fields on State)
 <<<END_VERIFICATION>>>

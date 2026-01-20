@@ -9,6 +9,28 @@
 
 export { OmegaRuntime, evalOmegaCode, type OmegaConfig, type EvalResult, type InferResult } from "./runtime";
 
+// Outcomes and diagnostics
+export {
+  ok,
+  err,
+  failure,
+  warn,
+  info,
+  error as diagnosticError,
+  isOk,
+  isErr,
+  FAILURE_CODES,
+  type Outcome,
+  type Ok,
+  type Err,
+  type Failure,
+  type FailureCode,
+  type Diagnostic,
+  type DiagnosticSpan,
+  type DiagnosticPosition,
+  type DiagnosticSeverity,
+} from "./core/outcome";
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // FRAME IR PACKAGE
 // ═══════════════════════════════════════════════════════════════════════════════
