@@ -27,7 +27,7 @@ Each job file includes:
 | [001](./001-FIX-PRODUCTION-PRIMITIVES.md) | Fix Production Primitives | P0 - CRITICAL | ✅ DONE | - |
 | [002](./002-FIX-PRIMITIVE-NAMING-CONVENTIONS.md) | Fix Primitive Naming Conventions | P1 - Important | ✅ DONE | 001 |
 | [003](./003-COMPREHENSIVE-FEATURE-AUDIT-AND-LAYERING.md) | Comprehensive Feature Audit & Layering | P0 - Strategic | ✅ DONE | 001, 002 |
-| [004](./004-IMPLEMENT-CORE-MAGIC.md) | Implement Core Magic (call/cc + Evidence) | P0 - Foundation | NOT STARTED | 001, 002, 003 |
+| [004](./004-IMPLEMENT-CORE-MAGIC.md) | Implement Core Magic (call/cc + Evidence) | P0 - Foundation | Гo. DONE | 001, 002, 003 |
 
 ### Phase B: Clean Composition
 
