@@ -8,6 +8,9 @@ export type OracleInit =
   | { tag: "Infer"; payload: Val; envRef: EnvRef; stateRef: StateRef; policyDigest?: string }
   | { tag: "Apply"; proc: Val; args: Val[]; envRef: EnvRef; stateRef: StateRef; policyDigest?: string };
 
+export type InferInit = Extract<OracleInit, { tag: "Infer" }>;
+export type ApplyInit = Extract<OracleInit, { tag: "Apply" }>;
+
 export interface OracleAdapter {
   startSession(init: OracleInit): OracleSession;
 }

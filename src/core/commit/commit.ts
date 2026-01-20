@@ -87,23 +87,22 @@ function parseObligation(val: unknown): Obligation | null {
     // Handle Val representation
     if (v.tag === "Map" && "entries" in val) {
       const entries = (val as { entries: Array<[unknown, unknown]> }).entries;
-      const tagEntry = entries.find(([k]) =>
-        typeof k === "object" && k && "tag" in k && (k as { tag: string }).tag === "Str" &&
-        (k as { s: string }).s === "tag"
-      );
+      const tagEntry = entries.find(([k]) => {
+        const key = k as any;
+        return key && typeof key === "object" && key.tag === "Str" && typeof key.s === "string" && key.s === "tag";
+      });
       if (tagEntry) {
-        const tagVal = tagEntry[1] as { tag: string; s?: string };
-        if (tagVal.tag === "Str" && tagVal.s) {
+        const tagVal = tagEntry[1] as any;
+        if (tagVal?.tag === "Str" && typeof tagVal.s === "string") {
           if (tagVal.s === "OblNone") return { tag: "OblNone" };
           if (tagVal.s === "OblTests") {
             // Extract passed and report from entries
-            const passedEntry = entries.find(([k]) =>
-              typeof k === "object" && k && "tag" in k && (k as { tag: string }).tag === "Str" &&
-              (k as { s: string }).s === "passed"
-            );
-            const passed = passedEntry
-              ? ((passedEntry[1] as { b?: boolean }).b ?? false)
-              : false;
+            const passedEntry = entries.find(([k]) => {
+              const key = k as any;
+              return key && typeof key === "object" && key.tag === "Str" && typeof key.s === "string" && key.s === "passed";
+            });
+            const passedVal = passedEntry?.[1] as { b?: boolean } | undefined;
+            const passed = passedVal?.b ?? false;
             return { tag: "OblTests", spec: {}, passed };
           }
         }
@@ -198,6 +197,7 @@ export function isRegimeAtLeast(have: TruthRegime, need: TruthRegime): boolean {
     "speculative": 0,
     "test-certified": 1,
     "proof-certified": 2,
+    "consensus-certified": 3,
   };
   return (order[have] ?? 0) >= (order[need] ?? 0);
 }
@@ -210,6 +210,7 @@ export function strictestRegime(a: TruthRegime, b: TruthRegime): TruthRegime {
     "speculative": 0,
     "test-certified": 1,
     "proof-certified": 2,
+    "consensus-certified": 3,
   };
   return order[a] >= order[b] ? a : b;
 }

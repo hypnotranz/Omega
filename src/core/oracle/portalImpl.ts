@@ -240,7 +240,11 @@ export class PortalImpl implements OraclePortal {
       } as any;
 
       const st1 = fn.fn(args, st0);
-      const { value, state } = await runToCompletionWithState(this.runtime, st1, this.opts.maxEvalSteps);
+      const { value, state } = await runToCompletionWithState(
+        this.runtime,
+        st1 as State,
+        this.opts.maxEvalSteps
+      );
       return { value, env2: state.env, store2: state.store };
     }
 

@@ -456,7 +456,7 @@ export function differentialRun(
 /**
  * Compare two effect traces.
  */
-function compareEffectTraces(
+export function compareEffectTraces(
   interp: EffectTraceEntry[],
   compiled: EffectTraceEntry[],
   strict: boolean

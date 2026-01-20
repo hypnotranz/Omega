@@ -75,10 +75,19 @@ function norm(e: Expr, env: Env, supply: Supply): Expr {
       };
     }
 
+    case "QuoteSyntax":
+      return e;
+
+    case "Let":
+    case "Letrec":
+      return {
+        ...e,
+        bindings: e.bindings.map(b => ({ ...b, init: norm(b.init, env, supply) })),
+        body: norm(e.body, env, supply),
+      };
+
     default:
-      // exhaustive check
-      const _exhaustive: never = e;
-      return _exhaustive;
+      return e;
   }
 }
 

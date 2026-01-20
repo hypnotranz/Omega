@@ -1,6 +1,8 @@
 // test/live/full-stack-live.spec.ts
 // Full stack live integration test - tests the whole system end-to-end
 
+// Run with: RUN_LIVE_TESTS=true npm test
+
 import { describe, it, expect } from "vitest";
 import "../../src/core/oracle/plugins";
 import { registry, ModelSelectorAdapter } from "../../src/core/oracle/plugins";
@@ -10,23 +12,7 @@ import { canCommitMeaning, attachTestReport } from "../../src/core/commit";
 import { PROFILE_SPECULATIVE, PROFILE_TEST_CERTIFIED } from "../../src/core/governance/profile";
 import type { OracleResp } from "../../src/core/oracle/protocol";
 import type { MeaningVal } from "../../src/core/oracle/meaning";
-
-import * as fs from "fs";
-import * as path from "path";
-
-function loadApiKey(): string | undefined {
-  try {
-    const configPath = path.join(__dirname, "../../../LambdaRLM/config.yaml");
-    const content = fs.readFileSync(configPath, "utf8");
-    const match = content.match(/api_key:\s*(\S+)/);
-    return match?.[1];
-  } catch {
-    return process.env.OPENAI_API_KEY;
-  }
-}
-
-const OPENAI_API_KEY = loadApiKey();
-const hasKey = !!OPENAI_API_KEY;
+import { runLive, hasApiKey, OPENAI_API_KEY } from "./config";
 
 describe("Full Stack Live Integration", () => {
   describe("Config System", () => {
@@ -46,7 +32,7 @@ describe("Full Stack Live Integration", () => {
       const validation = validateConfig(config);
       console.log("Config validation:", validation);
 
-      if (hasKey) {
+      if (hasApiKey) {
         expect(validation.valid).toBe(true);
       }
       expect(config.llm.provider).toBe("openai");
@@ -130,7 +116,7 @@ describe("Full Stack Live Integration", () => {
     });
   });
 
-  describe.runIf(hasKey)("Live Oracle with Full Pipeline", () => {
+  describe.runIf(runLive)("Live Oracle with Full Pipeline", () => {
     it("oracle generates code, we parse and match it", async () => {
       const selector = new ModelSelectorAdapter({
         defaultModel: "gpt-4o-mini",

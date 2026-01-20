@@ -319,7 +319,7 @@ export class ScriptedOracleAdapter implements OracleAdapter {
         tag: "Meaning",
         denotation: { tag: "Num", n: x + 1 },
         confidence: 1,
-        obligation: { tag: "Obligation", status: "satisfied" },
+        obligation: { tag: "Str", s: "satisfied" },
         trace: { tag: "Str", s: "certified meaning with satisfied obligation" },
       };
       yield { tag: "ReqReturn", result: m };

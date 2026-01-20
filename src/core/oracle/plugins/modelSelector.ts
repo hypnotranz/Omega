@@ -257,16 +257,17 @@ export function withPlugin(plugin: string, model: string, payload: Val): Val {
  */
 export function createModelSelector(overrides?: Partial<ModelConfig>): ModelSelectorAdapter {
   // Try to find a working plugin
+  const registry = overrides?.registry ?? globalRegistry;
   let defaultPlugin: string | undefined;
   let defaultModel: string;
 
-  if (globalRegistry.has("anthropic") && process.env.ANTHROPIC_API_KEY) {
+  if (registry.has("anthropic") && process.env.ANTHROPIC_API_KEY) {
     defaultPlugin = "anthropic";
     defaultModel = "claude-sonnet-4-20250514";
-  } else if (globalRegistry.has("openai") && process.env.OPENAI_API_KEY) {
+  } else if (registry.has("openai") && process.env.OPENAI_API_KEY) {
     defaultPlugin = "openai";
     defaultModel = "gpt-4o";
-  } else if (globalRegistry.has("ollama")) {
+  } else if (registry.has("ollama")) {
     defaultPlugin = "ollama";
     defaultModel = "llama3.1";
   } else {
@@ -279,6 +280,7 @@ export function createModelSelector(overrides?: Partial<ModelConfig>): ModelSele
     defaultPlugin: overrides?.defaultPlugin || defaultPlugin,
     sharedConfig: overrides?.sharedConfig,
     modelConfigs: overrides?.modelConfigs,
+    registry,
   });
 }
 
@@ -288,8 +290,9 @@ export function createModelSelector(overrides?: Partial<ModelConfig>): ModelSele
 export function createPluginSelector(
   pluginId: string,
   model?: string,
-  config?: Partial<BasePluginConfig>
+  config?: Partial<BasePluginConfig> & { registry?: PluginRegistry }
 ): ModelSelectorAdapter {
+  const registry = config?.registry ?? globalRegistry;
   const plugin = registry.get(pluginId);
   if (!plugin) {
     throw new Error(`Unknown plugin: ${pluginId}`);

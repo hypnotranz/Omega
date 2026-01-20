@@ -68,27 +68,105 @@ export type Profile = {
   name: string;
 
   /** Capability envelope - what authorities this profile grants */
-  allowedCaps: Set<string>;
+  allowedCaps?: Set<string>;
 
   /** Which effect ops are allowed to be handled */
-  allowedOps: Set<string>;
+  allowedOps?: Set<string>;
 
   /** Which Oracle requests are legal during inference */
-  allowedOracleReqTags: Set<OracleReqTag>;
+  allowedOracleReqTags?: Set<OracleReqTag>;
 
   /** Budget envelope - hard stops */
   budgets: BudgetProfile;
 
   /** Truth regime for promotion barriers */
-  truthRegime: TruthRegime;
+  truthRegime?: TruthRegime;
 
   /** If true, only scripted/replay oracles allowed */
-  deterministicEnvelope: boolean;
+  deterministicEnvelope?: boolean;
 
   // Legacy compatibility
   caps?: CapSet;
   truth?: TruthRegime;
+  // Demo flags (legacy wow pack)
+  allowCommit?: boolean;
+  allowPromotion?: boolean;
+  requireTests?: boolean;
+  inferBudget?: number;
 };
+
+/** Fully-populated profile after normalization */
+export type NormalizedProfile = Profile & {
+  allowedCaps: Set<string>;
+  allowedOps: Set<string>;
+  allowedOracleReqTags: Set<OracleReqTag>;
+  truthRegime: TruthRegime;
+  deterministicEnvelope: boolean;
+};
+
+const DEFAULT_ALLOWED_OPS = new Set<string>([
+  "infer.op", "int.op", "search.op", "rewrite.op", "oracle.apply.op",
+  "amb.op", "amb.choose", "amb.fail", "observe.op", "tool.op", "commit.op",
+]);
+
+const DEFAULT_ORACLE_REQS: OracleReqTag[] = [
+  "ReqEval",
+  "ReqApply",
+  "ReqObserve",
+  "ReqTool",
+  "ReqTest",
+  "ReqCommit",
+];
+
+function toSet(value?: Set<string> | string[]): Set<string> {
+  if (!value) return new Set();
+  return value instanceof Set ? new Set(value) : new Set(value);
+}
+
+/**
+ * Normalize a profile into the fully-populated runtime shape.
+ * Accepts legacy profiles that only specify caps/budgets/truth.
+ */
+export function normalizeProfile(profile: Profile): NormalizedProfile {
+  if (
+    profile.allowedCaps &&
+    profile.allowedOps &&
+    profile.allowedOracleReqTags &&
+    profile.truthRegime !== undefined &&
+    profile.deterministicEnvelope !== undefined
+  ) {
+    return profile as NormalizedProfile;
+  }
+
+  const allowedCaps = toSet(profile.allowedCaps ?? (profile.caps as string[] | undefined));
+  const allowedOps = profile.allowedOps ? new Set(profile.allowedOps) : new Set(DEFAULT_ALLOWED_OPS);
+  const allowedOracleReqTags = profile.allowedOracleReqTags
+    ? new Set(profile.allowedOracleReqTags)
+    : new Set(DEFAULT_ORACLE_REQS);
+  const truthRegime = profile.truthRegime ?? profile.truth ?? "speculative";
+  const deterministicEnvelope = profile.deterministicEnvelope ?? (profile as { deterministic?: boolean }).deterministic ?? false;
+
+  const budgets: BudgetProfile = {
+    maxOracleTurns: profile.budgets.maxOracleTurns,
+    maxEvalSteps: profile.budgets.maxEvalSteps,
+    maxToolCalls: profile.budgets.maxToolCalls,
+    maxNestedDepth: profile.budgets.maxNestedDepth ?? 8,
+    maxOracleReqs: profile.budgets.maxOracleReqs ?? profile.budgets.maxOracleTurns,
+    maxCommits: profile.budgets.maxCommits ?? (profile.allowCommit ? 100 : 0),
+  };
+
+  return {
+    ...profile,
+    allowedCaps,
+    allowedOps,
+    allowedOracleReqTags,
+    truthRegime,
+    deterministicEnvelope,
+    caps: profile.caps ?? Array.from(allowedCaps),
+    truth: truthRegime,
+    budgets,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────
 // Runtime Budget: mutable state for tracking consumption
@@ -169,7 +247,7 @@ export function makeProfile(config: {
   budgets: BudgetProfile;
   truth: TruthRegime;
   deterministic?: boolean;
-}): Profile {
+}): NormalizedProfile {
   // Generate legacy caps that include both new-style (cap.eval) and old-style (eval) names
   // for backward compatibility with existing capRequire calls
   const legacyCaps = [...config.caps];
@@ -183,7 +261,7 @@ export function makeProfile(config: {
     }
   }
 
-  return {
+  return normalizeProfile({
     name: config.name,
     allowedCaps: new Set(config.caps),
     allowedOps: new Set(config.ops),
@@ -194,7 +272,7 @@ export function makeProfile(config: {
     // Legacy - includes both cap.X and X style names for compatibility
     caps: legacyCaps,
     truth: config.truth,
-  };
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -202,12 +280,13 @@ export function makeProfile(config: {
 // ─────────────────────────────────────────────────────────────────
 
 export function makeRuntimeBudget(profile: Profile): RuntimeBudget {
+  const normalized = normalizeProfile(profile);
   return {
-    stepsLeft: profile.budgets.maxEvalSteps,
-    inferCallsLeft: profile.budgets.maxOracleTurns,
-    oracleReqLeft: profile.budgets.maxOracleReqs ?? profile.budgets.maxOracleTurns,
-    toolCallsLeft: profile.budgets.maxToolCalls,
-    commitLeft: profile.budgets.maxCommits ?? 100,
+    stepsLeft: normalized.budgets.maxEvalSteps,
+    inferCallsLeft: normalized.budgets.maxOracleTurns,
+    oracleReqLeft: normalized.budgets.maxOracleReqs ?? normalized.budgets.maxOracleTurns,
+    toolCallsLeft: normalized.budgets.maxToolCalls,
+    commitLeft: normalized.budgets.maxCommits ?? 100,
   };
 }
 
@@ -225,7 +304,7 @@ export function makeRuntimeBudget(profile: Profile): RuntimeBudget {
  *
  * Use: rapid exploration where you can't accidentally promote
  */
-export const PROFILE_EXPLORE = makeProfile({
+export const PROFILE_EXPLORE: NormalizedProfile = makeProfile({
   name: "explore",
   caps: ["cap.eval", "cap.apply", "cap.observe", "cap.infer"],
   ops: ["infer.op", "int.op", "search.op", "rewrite.op", "oracle.apply.op", "amb.op", "amb.choose", "amb.fail", "observe.op"],
@@ -252,7 +331,7 @@ export const PROFILE_EXPLORE = makeProfile({
  *
  * Use: real engineering tasks with CI-like discipline
  */
-export const PROFILE_PRAGMATIC = makeProfile({
+export const PROFILE_PRAGMATIC: NormalizedProfile = makeProfile({
   name: "pragmatic",
   caps: [
     "cap.eval", "cap.apply", "cap.observe", "cap.infer",
@@ -284,7 +363,7 @@ export const PROFILE_PRAGMATIC = makeProfile({
  *
  * Use: production semantics
  */
-export const PROFILE_STRICT = makeProfile({
+export const PROFILE_STRICT: NormalizedProfile = makeProfile({
   name: "strict",
   caps: ["cap.observe", "cap.test", "cap.commit.rewrite", "cap.commit.method"],
   ops: ["infer.op", "int.op", "search.op", "rewrite.op", "oracle.apply.op", "commit.op"],  // No amb, limited ops
@@ -312,7 +391,7 @@ export const PROFILE_STRICT = makeProfile({
  *
  * Use: private/offline, reproducible semantics
  */
-export const PROFILE_AIRGAP = makeProfile({
+export const PROFILE_AIRGAP: NormalizedProfile = makeProfile({
   name: "airgap",
   caps: ["cap.observe", "cap.infer"],
   ops: ["infer.op", "int.op", "search.op", "rewrite.op", "oracle.apply.op", "observe.op"],  // No tool.op, no commit.op
@@ -330,9 +409,9 @@ export const PROFILE_AIRGAP = makeProfile({
 });
 
 // Legacy profiles (for backward compatibility)
-export const PROFILE_SPECULATIVE: Profile = PROFILE_EXPLORE;
-export const PROFILE_TEST_CERTIFIED: Profile = PROFILE_PRAGMATIC;
-export const PROFILE_PROOF_CERTIFIED = makeProfile({
+export const PROFILE_SPECULATIVE: NormalizedProfile = PROFILE_EXPLORE;
+export const PROFILE_TEST_CERTIFIED: NormalizedProfile = PROFILE_PRAGMATIC;
+export const PROFILE_PROOF_CERTIFIED: NormalizedProfile = makeProfile({
   name: "proof-certified",
   caps: ["*"],
   ops: ["infer.op", "int.op", "search.op", "rewrite.op", "oracle.apply.op", "tool.op", "commit.op", "amb.op", "amb.choose", "amb.fail", "observe.op"],
@@ -355,7 +434,7 @@ export const DEFAULT_PROFILE = PROFILE_PRAGMATIC;
 // Profile lookup by name
 // ─────────────────────────────────────────────────────────────────
 
-const PROFILE_REGISTRY: Map<string, Profile> = new Map([
+const PROFILE_REGISTRY: Map<string, NormalizedProfile> = new Map([
   ["explore", PROFILE_EXPLORE],
   ["pragmatic", PROFILE_PRAGMATIC],
   ["strict", PROFILE_STRICT],
@@ -365,10 +444,11 @@ const PROFILE_REGISTRY: Map<string, Profile> = new Map([
   ["proof-certified", PROFILE_PROOF_CERTIFIED],
 ]);
 
-export function getProfile(name: string): Profile | undefined {
-  return PROFILE_REGISTRY.get(name);
+export function getProfile(name: string): NormalizedProfile | undefined {
+  const p = PROFILE_REGISTRY.get(name);
+  return p ? normalizeProfile(p) : undefined;
 }
 
-export function getProfileOrDefault(name: string): Profile {
-  return PROFILE_REGISTRY.get(name) ?? DEFAULT_PROFILE;
+export function getProfileOrDefault(name: string): NormalizedProfile {
+  return normalizeProfile(PROFILE_REGISTRY.get(name) ?? DEFAULT_PROFILE);
 }

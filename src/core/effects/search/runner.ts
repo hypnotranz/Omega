@@ -470,7 +470,19 @@ async function runJobToChoiceNoBudget(
 
           // Create child jobs for each choice
           const children: SearchJob[] = choices.map((choice, idx) => {
-            const childState = out.opcall.resumption.invoke(choice.v);
+            const cv = choice.v;
+            let childState: State;
+
+            if (cv.tag === "Closure") {
+              if (cv.params.length !== 0) {
+                throw new Error("amb.choose: thunk closure must take no arguments");
+              }
+              // Resume continuation, then evaluate thunk body in its lexical env
+              const baseState = out.opcall.resumption.invoke(VUnit);
+              childState = { ...baseState, control: { tag: "Expr", e: cv.body }, env: cv.env };
+            } else {
+              childState = out.opcall.resumption.invoke(cv);
+            }
             return {
               id: makeJobId(),
               state: childState,

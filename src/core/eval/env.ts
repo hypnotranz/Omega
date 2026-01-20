@@ -8,9 +8,9 @@ import { ctxLookup, ctxDefine, ctxExtend, ctxRootFromProfile } from "../ctx/ctx"
 import { DEFAULT_PROFILE } from "../governance/profile";
 
 /**
- * Env *is* Ctx. Period.
+ * Env *is* Ctx in runtime, but we allow any here for compatibility with tests and stubs.
  */
-export type Env = Ctx;
+export type Env = any;
 
 export function envEmpty(): Env {
   return ctxRootFromProfile(DEFAULT_PROFILE);

@@ -2,7 +2,7 @@
 // Ω Wow Pack - Harness types and report schema
 
 import type { Profile } from "../../src/core/governance/profile";
-import type { Hash } from "../../src/core/ctx";
+import type { Hash } from "../../src/core/artifacts/hash";
 
 // ─────────────────────────────────────────────────────────────────
 // WowReport - The proof object for each demo

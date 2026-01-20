@@ -16,8 +16,8 @@ export default defineConfig(({ mode }) => {
       testTimeout: 120_000,
       // Run tests in parallel by default
       pool: "threads",
-      // Include all test files
-      include: ["test/**/*.spec.ts"],
+      // Include all test files (legacy .spec and new .test under tests/)
+      include: ["test/**/*.spec.ts", "tests/**/*.test.ts"],
     },
   };
 });

@@ -594,8 +594,9 @@ export class RuntimeImpl implements Runtime {
 
       // Build a state that evaluates the thunk with resumption's frames
       // The thunk is a zero-arg closure - inline its body evaluation
-      const baseState = opcall.resumption.invoke({ tag: "Unit" } as Val);
-      if (baseState === "Uncaught" || baseState === "OutOfBudget") {
+      const baseState: State | "Uncaught" | "OutOfBudget" =
+        opcall.resumption.invoke({ tag: "Unit" } as Val);
+      if (baseState === ("Uncaught" as any) || baseState === ("OutOfBudget" as any)) {
         return baseState;
       }
 
@@ -629,8 +630,9 @@ export class RuntimeImpl implements Runtime {
       const resumption = alt.resumption;
 
       // Same as amb.choose: we need to evaluate the thunk and resume with result
-      const baseState = resumption.invoke({ tag: "Unit" } as Val);
-      if (baseState === "Uncaught" || baseState === "OutOfBudget") {
+      const baseState: State | "Uncaught" | "OutOfBudget" =
+        resumption.invoke({ tag: "Unit" } as Val);
+      if (baseState === ("Uncaught" as any) || baseState === ("OutOfBudget" as any)) {
         return baseState;
       }
 

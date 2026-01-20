@@ -574,8 +574,8 @@ export function createSemanticFunction(
   const proc: Val = {
     tag: "Closure",
     params: spec.params,
-    body: { tag: "Lit", value: VUnit },
-    env: [],
+    body: { tag: "Lit", value: null },
+    env: {} as any,
   };
 
   return makeSemanticTransformer(proc, defScope, spec.name, obligations);

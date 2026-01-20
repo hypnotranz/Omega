@@ -1,6 +1,8 @@
 // test/live/openai-live.spec.ts
 // Live integration test against real OpenAI API with REAL PortalImpl
 // NO MOCKS - all eval/observe requests handled by real interpreter
+//
+// Run with: RUN_LIVE_TESTS=true npm test
 
 import { describe, it, expect } from "vitest";
 import { COWStore } from "../../src/core/eval/store";
@@ -17,22 +19,7 @@ import { VUnit } from "../../src/core/eval/values";
 import "../../src/core/oracle/plugins";
 import { ModelSelectorAdapter } from "../../src/core/oracle/plugins";
 import type { OracleResp, OracleReq } from "../../src/core/oracle/protocol";
-import * as fs from "fs";
-import * as path from "path";
-
-function loadApiKey(): string | undefined {
-  try {
-    const configPath = path.join(__dirname, "../../../LambdaRLM/config.yaml");
-    const content = fs.readFileSync(configPath, "utf8");
-    const match = content.match(/api_key:\s*(\S+)/);
-    return match?.[1];
-  } catch {
-    return process.env.OPENAI_API_KEY;
-  }
-}
-
-const OPENAI_API_KEY = loadApiKey();
-const hasKey = !!OPENAI_API_KEY;
+import { runLive, OPENAI_API_KEY } from "./config";
 
 // Setup real runtime and portal with pre-evaluated state
 async function setupRealRuntime(src: string) {
@@ -71,7 +58,7 @@ async function setupRealRuntime(src: string) {
 }
 
 describe("OpenAI Live Integration", () => {
-  it.runIf(hasKey)("makes real API call to OpenAI - simple query", async () => {
+  it.runIf(runLive)("makes real API call to OpenAI - simple query", async () => {
     // Simple test - LLM just answers a question, no tool use needed
     const selector = new ModelSelectorAdapter({
       defaultModel: "gpt-4o-mini",
@@ -115,7 +102,7 @@ describe("OpenAI Live Integration", () => {
     }
   }, 30000);
 
-  it.runIf(hasKey)("handles multi-turn with REAL eval", async () => {
+  it.runIf(runLive)("handles multi-turn with REAL eval", async () => {
     // Setup real runtime with primitives
     const { portal, envRef, stateRef } = await setupRealRuntime("1");
 
@@ -190,7 +177,7 @@ describe("OpenAI Live Integration", () => {
     expect(usedRealEval).toBe(true);
   }, 60000);
 
-  it.runIf(hasKey)("LLM uses omega_observe with REAL definitions", async () => {
+  it.runIf(runLive)("LLM uses omega_observe with REAL definitions", async () => {
     // Setup runtime with a pre-defined function
     const { portal, envRef, stateRef } = await setupRealRuntime(`
       (define (double x) (* x 2))
@@ -284,7 +271,7 @@ describe("OpenAI Live Integration", () => {
     expect(realDefsData.count).toBeGreaterThanOrEqual(2); // double and my-value
   }, 60000);
 
-  it.runIf(hasKey)("LLM can eval multiple expressions", async () => {
+  it.runIf(runLive)("LLM can eval multiple expressions", async () => {
     // Test multiple real evals in sequence
     const { portal, envRef, stateRef } = await setupRealRuntime("1");
 

@@ -33,6 +33,7 @@ export type Omega0Expr =
   | boolean
   | symbol
   | null
+  | Omega0Symbol
   | Omega0List;
 
 /**
@@ -82,6 +83,7 @@ export type Omega0Val =
   | boolean
   | null
   | Omega0Symbol
+  | Omega0List
   | Omega0Pair
   | Omega0Closure
   | Omega0Prim
@@ -498,7 +500,7 @@ export function omega0ToString(v: Omega0Val): string {
   if (isLLMProc(v)) return `#<llm-proc ${v.name}>`;
   if (isMeaning(v)) return `#<meaning conf=${v.confidence.toFixed(2)}>`;
   if (Array.isArray(v)) {
-    return `(${v.map(omega0ToString).join(" ")})`;
+    return `(${(v as Omega0Expr[]).map(x => omega0ToString(x as Omega0Val)).join(" ")})`;
   }
   return String(v);
 }

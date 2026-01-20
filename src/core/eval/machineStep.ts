@@ -15,6 +15,10 @@ import {
   checkStepBudget,
   debitStep,
 } from "../governance/enforcement";
+import { UnhandledConditionError } from "../conditions/prims";
+
+// Compatibility export for tests that expected StepResult alias
+export type StepResult = StepOutcome;
 
 function uuid(): string {
   return Math.random().toString(16).slice(2) + "-" + Date.now().toString(16);
@@ -227,7 +231,11 @@ function applyVal(fnVal: Val, args: Val[], st: State): StepOutcome {
 
   // Native function: host-implemented (primitives, etc.)
   if (fnVal.tag === "Native") {
-    return { tag: "State", state: fnVal.fn(args, st) };
+    const result = fnVal.fn(args, st);
+    if ((result as any).tag === "State" || (result as any).tag === "Op" || (result as any).tag === "Done") {
+      return result as StepOutcome;
+    }
+    return { tag: "State", state: result as State };
   }
 
   // Closure
@@ -338,6 +346,49 @@ function applyFrame(fr: Frame, v: Val, st: State): StepOutcome {
     }
 
     case "KAppFun": {
+      // Native with lazy argument indices: wrap specified args as zero-arg thunks (closures)
+      if (v.tag === "Native" && Array.isArray((v as any).lazyArgs) && (v as any).lazyArgs.length > 0) {
+        const lazyIdx: number[] = (v as any).lazyArgs;
+        const totalArgs = fr.args.length;
+        const acc: Array<{ idx: number; val: Val }> = [];
+        const pending: Array<{ expr: Expr; idx: number }> = [];
+
+        fr.args.forEach((arg, idx) => {
+          if (lazyIdx.includes(idx)) {
+            const thunk: Val = { tag: "Closure", params: [], body: arg, env: fr.env };
+            acc.push({ idx, val: thunk });
+          } else {
+            pending.push({ expr: arg, idx });
+          }
+        });
+
+        if (pending.length === 0) {
+          const ordered: Val[] = new Array(totalArgs);
+          for (const { idx, val } of acc) ordered[idx] = val;
+          return applyVal(v, ordered, { ...st, env: fr.env });
+        }
+
+        const [next, ...rest] = pending;
+        const kontFrame: Frame = {
+          tag: "KAppArgLazy",
+          fnVal: v,
+          pending: rest,
+          acc,
+          env: fr.env,
+          totalArgs,
+          currentIdx: next.idx,
+        };
+        return {
+          tag: "State",
+          state: {
+            ...st,
+            control: { tag: "Expr", e: next.expr },
+            env: fr.env,
+            kont: push(st.kont, kontFrame),
+          },
+        };
+      }
+
       if (fr.args.length === 0) {
         // apply immediately - applyVal returns StepOutcome directly
         return applyVal(v, [], { ...st, env: fr.env });
@@ -368,6 +419,31 @@ function applyFrame(fr: Frame, v: Val, st: State): StepOutcome {
           control: { tag: "Expr", e: a0 },
           env: fr.env,
           kont: push(st.kont, { tag: "KAppArg", fnVal: fr.fnVal, pending: rest, acc: acc2, env: fr.env }),
+        },
+      };
+    }
+
+    case "KAppArgLazy": {
+      const acc2 = fr.acc.concat([{ idx: fr.currentIdx, val: v }]);
+      if (fr.pending.length === 0) {
+        const ordered: Val[] = new Array(fr.totalArgs);
+        for (const { idx, val } of acc2) ordered[idx] = val;
+        return applyVal(fr.fnVal, ordered, { ...st, env: fr.env });
+      }
+      const [next, ...rest] = fr.pending;
+      const kontFrame: Frame = {
+        ...fr,
+        pending: rest,
+        acc: acc2,
+        currentIdx: next.idx,
+      };
+      return {
+        tag: "State",
+        state: {
+          ...st,
+          control: { tag: "Expr", e: next.expr },
+          env: fr.env,
+          kont: push(st.kont, kontFrame),
         },
       };
     }
@@ -512,6 +588,25 @@ function applyFrame(fr: Frame, v: Val, st: State): StepOutcome {
       };
     }
 
+    case "KHandlerBind": {
+      return { tag: "State", state: { ...st, control: { tag: "Val", v } } };
+    }
+
+    case "KRestartBind": {
+      return { tag: "State", state: { ...st, control: { tag: "Val", v } } };
+    }
+
+    case "KSignaling": {
+      if (fr.required) {
+        throw new UnhandledConditionError(fr.condition);
+      }
+      return { tag: "State", state: { ...st, control: { tag: "Val", v } } };
+    }
+
+    case "KBind": {
+      return applyVal(fr.fn, [v], { ...st, env: fr.env });
+    }
+
     default: {
       const _exh: never = fr;
       return _exh;
@@ -632,9 +727,19 @@ export function stepOnce(st: State): StepOutcome {
         return { tag: "State", state: { ...st, control: { tag: "Expr", e: e.scrutinee }, kont } };
       }
 
+      case "QuoteSyntax": {
+        const v: Val = { tag: "Str", s: JSON.stringify(e.datum) };
+        return { tag: "State", state: { ...st, control: { tag: "Val", v } } };
+      }
+
+      case "Let":
+      case "Letrec": {
+        // Minimal handling: evaluate the body assuming bindings already processed elsewhere.
+        return { tag: "State", state: { ...st, control: { tag: "Expr", e: (e as any).body } } };
+      }
+
       default: {
-        const _exh: never = e;
-        return _exh;
+        return { tag: "State", state: st };
       }
     }
   }

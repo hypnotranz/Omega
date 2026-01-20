@@ -5,13 +5,16 @@
 import type { Env } from "./eval/env";
 import { envEmpty, envSet } from "./eval/env";
 import type { Store } from "./eval/store";
-import type { State, Frame } from "./eval/machine";
+import type { State, Frame, StepOutcome } from "./eval/machine";
 import type { Val } from "./eval/values";
 import { VUnit, VTrue, VFalse } from "./eval/values";
+import type { Expr } from "./ast";
 import { rule, rewriteOnce, rewriteFixpoint, rewriteTrace, detectConflicts, substitute, type Rule, type Strategy } from "./oracle/trs";
 import { matchAST } from "./oracle/match";
 import { sha256JSON } from "./artifacts/hash";
 import { isMeaning } from "./oracle/meaning";
+import { registerConditionPrims } from "./conditions/prims";
+import { captureValueResumption } from "./effects/capture";
 
 export function installPrims(store: Store): { env: Env; store: Store } {
   let env: Env = envEmpty();
@@ -23,7 +26,7 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     env = envSet(env, name, addr);
   }
 
-  function isCallable(proc: Val): proc is { tag: "Native" | "Closure" } {
+  function isCallable(proc: Val): proc is Val {
     return proc.tag === "Native" || proc.tag === "Closure";
   }
 
@@ -43,7 +46,7 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     throw new Error(`${name}: expected a procedure`);
   }
 
-  function applyProcedure(proc: Val, procArgs: Val[], state: State): State {
+  function applyProcedure(proc: Val, procArgs: Val[], state: State): State | StepOutcome {
     if (proc.tag === "Native") {
       return proc.fn(procArgs, state);
     }
@@ -64,6 +67,9 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     throw new Error("expected procedure");
   }
 
+  // Condition system primitives
+  registerConditionPrims(def, { applyProcedure, ensureArity, isCallable });
+
   function promptKey(v: Val): string {
     switch (v.tag) {
       case "Sym": return `sym:${v.name}`;
@@ -77,6 +83,12 @@ export function installPrims(store: Store): { env: Env; store: Store } {
           return v.tag;
         }
     }
+  }
+
+  let gensymCounter = 0;
+  function gensym(prefix: string): string {
+    gensymCounter += 1;
+    return `${prefix}${gensymCounter}`;
   }
 
   // *uninit*: placeholder for letrec uninitialized bindings
@@ -133,12 +145,49 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: { tag: "Num", n: a % b } } };
   }});
 
+  def("even?", { tag: "Native", name: "even?", arity: 1, fn: (args, s) => {
+    const n = (args[0] as any).n as number;
+    return { ...s, control: { tag: "Val", v: n % 2 === 0 ? VTrue : VFalse } };
+  }});
+
   def("not", { tag: "Native", name: "not", arity: 1, fn: (args, s) => {
     const b = (args[0] as any).b as boolean;
     return { ...s, control: { tag: "Val", v: (!b ? VTrue : VFalse) } };
   }});
 
-  def("unit", { tag: "Native", name: "unit", arity: 0, fn: (_args, s) => ({ ...s, control: { tag: "Val", v: VUnit } }) });
+  // Monadic primitives for nondeterminism
+  function emitAmbChoose(thunks: Val[], s: State): StepOutcome {
+    const suspended: State = { ...s, control: { tag: "Val", v: VUnit } };
+    const resumption = captureValueResumption(suspended);
+    const choices: Val = { tag: "Vector", items: thunks };
+    const opcall = { op: "amb.choose", args: [choices], ctxDigest: s.env.cid, resumption };
+    return { tag: "Op", opcall, state: suspended };
+  }
+
+  def("unit", { tag: "Native", name: "unit", arity: 1, fn: (args, s) => ({ ...s, control: { tag: "Val", v: args[0] } }) });
+
+  def("mzero", { tag: "Native", name: "mzero", arity: 0, fn: (_args, s) => emitAmbChoose([], s) });
+
+  def("mplus", { tag: "Native", name: "mplus", arity: 2, lazyArgs: [0, 1], fn: (args, s) => {
+    return emitAmbChoose(args, s);
+  }});
+
+  def("bind", { tag: "Native", name: "bind", arity: 2, lazyArgs: [0], fn: (args, s) => {
+    const [thunk, fn] = args;
+    if (!isCallable(fn)) {
+      throw new Error("bind expects a procedure as second argument");
+    }
+    ensureArity(fn, 1, "bind");
+
+    if (!isCallable(thunk)) {
+      throw new Error("bind expects a computation (thunk) as first argument");
+    }
+    ensureArity(thunk, 0, "bind");
+
+    const kont = s.kont.concat([{ tag: "KBind", fn, env: s.env } as Frame]);
+    const stWithKont: State = { ...s, kont };
+    return applyProcedure(thunk, [], stWithKont);
+  }});
 
   // ─────────────────────────────────────────────────────────────────
   // Continuations and prompts

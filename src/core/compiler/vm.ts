@@ -428,7 +428,7 @@ export function step(
           tag: "Closure",
           params: [],
           body: { tag: "Lit", value: null }, // Placeholder
-          env: [],
+          env: {} as any,
         };
         // Store fnId in a way we can recover it
         (closureVal as any).vmFnId = instr.fnId;

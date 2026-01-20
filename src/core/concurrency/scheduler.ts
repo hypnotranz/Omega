@@ -20,6 +20,9 @@ import {
   makeFiber,
 } from "./types";
 
+// Re-export scheduler types for convenience
+export type { SchedulerState, SchedulePolicy, SchedulerStatus } from "./types";
+
 // ─────────────────────────────────────────────────────────────────
 // Scheduler registry (global state for managing schedulers)
 // ─────────────────────────────────────────────────────────────────
@@ -436,7 +439,7 @@ export function runScheduler(
       }
 
       // Check if fiber got blocked (would be set by effect handlers)
-      if (fiber.status === "blocked") {
+      if ((fiber as any).status === "blocked") {
         break;
       }
 
@@ -447,7 +450,7 @@ export function runScheduler(
     }
 
     // If still running, yield back to ready queue
-    if (fiber.status === "running") {
+    if ((fiber as any).status === "running") {
       fiber.status = "ready";
       scheduler.readyQueue.push(nextFiberId);
       scheduler.running = undefined;

@@ -59,7 +59,7 @@ export async function runSession(
   let next = await session.next(undefined as any);
 
   while (!next.done) {
-    const req = next.value;
+    const req = next.value as OracleReq;
     const resp = await handler(req);
     next = await session.next(resp);
   }
@@ -80,7 +80,7 @@ export async function recordSession(
   let next = await session.next(undefined as any);
 
   while (!next.done) {
-    const req = next.value;
+    const req = next.value as OracleReq;
     const resp = await handler(req);
     transcript.push({ req, resp });
     next = await session.next(resp);

@@ -14,6 +14,7 @@ import type { MeaningVal } from "../oracle/meaning";
 import type { Profile, TruthRegime, OracleReqTag } from "../governance/profile";
 import type { Ctx } from "../ctx/ctx";
 import type { Hash } from "../artifacts/hash";
+import type { ConditionVal } from "../conditions/types";
 
 /**
  * MachineVal: Reified execution state as a first-class value.
@@ -292,7 +293,7 @@ export type ContradictionVal = {
 // Prompt 13: Concurrency primitives (fibers, scheduler, synchronization)
 // ─────────────────────────────────────────────────────────────────
 
-export type FiberId = string;
+export type FiberId = number;
 
 /**
  * FiberVal: Reference to a fiber (lightweight concurrent execution unit).
@@ -570,19 +571,27 @@ export type IRVal = {
   label?: string;
 };
 
+// Compatibility tagged values used by stream and demo code
+export type IntVal = { tag: "Int"; value: bigint };
+export type ListVal = { tag: "List"; elements: Val[] };
+export type ErrVal = { tag: "Err"; message?: string };
+
 export type Val =
   | { tag: "Unit" }
   | { tag: "Uninit" }
   | { tag: "Num"; n: number }
+  | IntVal
   | { tag: "Bool"; b: boolean }
   | { tag: "Str"; s: string }
   | { tag: "Sym"; name: string }
+  | ConditionVal
+  | ListVal
   | { tag: "Pair"; car: Val; cdr: Val }
   | { tag: "Vector"; items: Val[] }
   | { tag: "Map"; entries: Array<[Val, Val]> }
   | { tag: "Syntax"; stx: Syntax }
   | { tag: "Closure"; params: string[]; body: Expr; env: Env }
-  | { tag: "Native"; name: string; arity: number | "variadic"; fn: (args: Val[], st: State) => State }
+  | { tag: "Native"; name: string; arity: number | "variadic"; lazyArgs?: number[]; fn: (args: Val[], st: State) => State | StepOutcome }
   | { tag: "Cont"; hid: string; boundaryIndex: number; resumption: Resumption }
   | { tag: "OracleProc"; params: string[]; spec: Val; env: Env; policyDigest?: string }
   | ContinuationVal   // First-class continuation (call/cc, prompts)
@@ -597,6 +606,7 @@ export type Val =
   | NetRefVal       // Prompt 12: Network reference for constraint propagation
   | ExplanationVal  // Prompt 12: First-class explanation graph
   | ContradictionVal // Prompt 12: First-class contradiction value
+  | ErrVal
   | FiberVal        // Prompt 13: Fiber reference for concurrent execution
   | MutexVal        // Prompt 13: Mutex for mutual exclusion
   | IVarVal         // Prompt 13: Write-once synchronization variable

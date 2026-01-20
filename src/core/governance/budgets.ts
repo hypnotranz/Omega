@@ -159,6 +159,14 @@ export class BudgetTracker {
     return this.budget.consumed.toolCalls >= this.budget.limits.maxToolCalls;
   }
 
+  /**
+   * Consume an amb attempt/backtrack (compat shim for nondet runtime).
+   * Currently just increments step counter to keep accounting monotonic.
+   */
+  consumeAmbAttempt(): void {
+    this.consumeEvalStep(0);
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // Ledger operations (Prompt 8)
   // ─────────────────────────────────────────────────────────────────

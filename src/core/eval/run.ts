@@ -144,7 +144,7 @@ function controlToString(control: State["control"]): { tag: string; detail: stri
     if (e.tag === "Effect") return { tag: "Expr", detail: `Effect(${(e as any).op || "?"})` };
     return { tag: "Expr", detail: e.tag };
   }
-  return { tag: control.tag, detail: "?" };
+  return { tag: (control as any).tag ?? "?", detail: "?" };
 }
 
 /**

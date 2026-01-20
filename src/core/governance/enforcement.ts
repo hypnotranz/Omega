@@ -22,6 +22,7 @@ import {
   TruthRegimeViolation,
   makeRuntimeBudget,
   DEFAULT_PROFILE,
+  normalizeProfile,
 } from "./profile";
 
 // ─────────────────────────────────────────────────────────────────
@@ -33,11 +34,12 @@ import {
  * Creates RuntimeBudget and RuntimeSecurity from the profile.
  */
 export function initGovernance(state: State, profile: Profile): State {
+  const normalized = normalizeProfile(profile);
   return {
     ...state,
-    profile,
-    budget: makeRuntimeBudget(profile),
-    sec: { caps: new Set(profile.allowedCaps) },
+    profile: normalized,
+    budget: makeRuntimeBudget(normalized),
+    sec: { caps: new Set(normalized.allowedCaps) },
   };
 }
 
@@ -45,7 +47,7 @@ export function initGovernance(state: State, profile: Profile): State {
  * Get effective profile from state (or default).
  */
 export function getEffectiveProfile(state: State): Profile {
-  return state.profile ?? DEFAULT_PROFILE;
+  return normalizeProfile(state.profile ?? DEFAULT_PROFILE);
 }
 
 /**

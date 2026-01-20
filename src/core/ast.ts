@@ -12,6 +12,9 @@ export type Expr =
   | { tag: "Set"; name: string; rhs: Expr }
   | { tag: "App"; fn: Expr; args: Expr[] }
   | { tag: "Quote"; datum: unknown }
+  | { tag: "QuoteSyntax"; datum: unknown }
+  | { tag: "Let"; bindings: Array<{ name: string; init: Expr }>; body: Expr }
+  | { tag: "Letrec"; bindings: Array<{ name: string; init: Expr }>; body: Expr }
   | { tag: "Effect"; op: string; args: Expr[] }
   | { tag: "Handle"; body: Expr; handler: HandlerExpr }
   | { tag: "Match"; scrutinee: Expr; clauses: Array<{ pat: Pattern; body: Expr }> };

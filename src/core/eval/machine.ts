@@ -8,6 +8,7 @@ import type { Store } from "./store";
 import type { Val } from "./values";
 import type { OpCall } from "../effects/opcall";
 import type { Profile, RuntimeBudget, RuntimeSecurity } from "../governance/profile";
+import type { ConditionHandler, RestartBinding, ConditionVal } from "../conditions/types";
 
 export type Control =
   | { tag: "Expr"; e: Expr }
@@ -20,13 +21,18 @@ export type Frame =
   | { tag: "KSet"; name: string; env: Env }
   | { tag: "KAppFun"; args: Expr[]; env: Env }
   | { tag: "KAppArg"; fnVal: Val; pending: Expr[]; acc: Val[]; env: Env }
+  | { tag: "KAppArgLazy"; fnVal: Val; pending: Array<{ expr: Expr; idx: number }>; acc: Array<{ idx: number; val: Val }>; env: Env; totalArgs: number; currentIdx: number }
   | { tag: "KCall"; savedEnv: Env }                                  // restore env after closure body
   | { tag: "KEffect"; op: string; pending: Expr[]; acc: Val[]; env: Env }
   | { tag: "KHandleBoundary"; hid: string; savedHandlersDepth: number; resumeTo?: { kont: Frame[]; handlersDepth: number } }
   | { tag: "KHandleReturn"; mode: "exit" | "resume"; hid: string; targetKont: Frame[]; targetHandlersDepth: number; savedHandlersDepth: number }
   | { tag: "KPrompt"; promptTag: Val; handler: Val; env: Env; savedKont: Frame[]; savedHandlersDepth: number }
   | { tag: "KMatch"; clauses: Array<{ pat: Pattern; body: Expr }>; env: Env }
-  | { tag: "KOracleLambda"; params: string[]; env: Env };  // oracle-lambda: waiting for spec to evaluate
+  | { tag: "KOracleLambda"; params: string[]; env: Env }  // oracle-lambda: waiting for spec to evaluate
+  | { tag: "KBind"; fn: Val; env: Env }
+  | { tag: "KHandlerBind"; handlers: ConditionHandler[] }
+  | { tag: "KRestartBind"; restarts: RestartBinding[]; savedKont: Frame[]; env: Env; store: Store; handlers: HandlerFrame[] }
+  | { tag: "KSignaling"; condition: ConditionVal; required: boolean };
 
 export type HandlerFrame = {
   hid: string;
@@ -38,6 +44,8 @@ export type HandlerFrame = {
 
 export type State = {
   control: Control;
+  /** Legacy alias used in a few tests */
+  ctrl?: Control;
   env: Env;
   store: Store;
   kont: Frame[];           // bottom->top, push/pop at end
@@ -58,6 +66,6 @@ export type State = {
 };
 
 export type StepOutcome =
-  | { tag: "State"; state: State }
-  | { tag: "Done"; value: Val; state: State }
-  | { tag: "Op"; opcall: OpCall; state: State };
+  | { tag: "State"; state: State; value?: undefined; opcall?: undefined }
+  | { tag: "Done"; value: Val; state: State; opcall?: undefined }
+  | { tag: "Op"; opcall: OpCall; state: State; value?: Val };

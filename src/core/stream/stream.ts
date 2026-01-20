@@ -95,7 +95,7 @@ export function consStream(
   const thunkId = registerThunk(tailThunk);
   const thunkVal: Val = {
     tag: "Str",
-    value: `__thunk:${thunkId}`,
+    s: `__thunk:${thunkId}`,
   };
 
   const tailPromise = createPromise(ctx, thunkVal, label);
@@ -154,8 +154,8 @@ function evaluateThunk(
   userEvaluator?: (thunk: Val) => { value: Val; oracleCalls: number }
 ): { value: Val; oracleCalls: number } {
   // Check if it's our stream thunk marker
-  if (thunk.tag === "Str" && thunk.value.startsWith("__thunk:")) {
-    const thunkId = thunk.value.slice(8);
+  if (thunk.tag === "Str" && thunk.s.startsWith("__thunk:")) {
+    const thunkId = thunk.s.slice(8);
     const thunkFn = getThunk(thunkId);
     if (thunkFn) {
       const result = thunkFn();

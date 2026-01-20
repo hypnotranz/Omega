@@ -61,9 +61,9 @@ export type FiberState = {
  * SchedulePolicy: Strategy for selecting the next fiber to run.
  */
 export type SchedulePolicy =
-  | { tag: "RoundRobin" }
-  | { tag: "FairRR"; quantum: number }
-  | { tag: "Random"; seed: number }
+  | { tag: "RoundRobin"; decisions?: number[] }
+  | { tag: "FairRR"; quantum: number; decisions?: number[] }
+  | { tag: "Random"; seed: number; decisions?: number[] }
   | { tag: "Replay"; decisions: number[] };
 
 /**

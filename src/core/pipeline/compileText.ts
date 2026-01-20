@@ -81,11 +81,13 @@ function initialEnv(moduleScope: string): Env {
     // Comparison
     "=", "<", ">", "<=", ">=",
     // Logic
-    "not",
+    "not", "even?",
     // Special values
-    "unit", "*uninit*",
+    "unit", "mzero", "mplus", "bind", "*uninit*",
     // Continuations
     "call/cc", "call-with-prompt", "abort-to-prompt",
+    // Conditions
+    "signal", "error", "invoke-restart", "find-restart", "compute-restarts", "handler-bind", "restart-bind",
     // List operations
     "cons", "car", "cdr", "null?", "pair?", "list", "append", "length", "reverse", "list-ref",
     "cadr", "caddr",
@@ -335,6 +337,52 @@ function expandExpr(stx: Syntax, env: Env, c: Counters): ExpandRes {
       }
 
       return { stx: { ...stx, items: clauses2 }, env: Γ };
+    }
+
+    case "handler-bind": {
+      if (stx.items.length < 3) throw new Error("handler-bind: expected (handler-bind ((type handler) ...) body...)");
+      const bindsList = expectList(stx.items[1], "handler-bind: bindings must be list");
+      let envBind = env;
+      const bindsOut: Syntax[] = [];
+      for (const b of bindsList.items) {
+        const pair = expectList(b, "handler-bind: binding must be list");
+        if (pair.items.length !== 2) throw new Error("handler-bind: binding must be (type handler)");
+        const handlerR = expandExpr(pair.items[1], envBind, c);
+        envBind = handlerR.env;
+        bindsOut.push({ ...pair, items: [pair.items[0], handlerR.stx] });
+      }
+      let envBody = envBind;
+      const bodyOut: Syntax[] = [];
+      for (let i = 2; i < stx.items.length; i++) {
+        const r = expandExpr(stx.items[i], envBody, c);
+        envBody = r.env;
+        bodyOut.push(r.stx);
+      }
+      const bindsListOut: Syntax = { ...bindsList, items: bindsOut };
+      return { stx: { ...stx, items: [stx.items[0], bindsListOut, ...bodyOut] }, env: envBody };
+    }
+
+    case "restart-bind": {
+      if (stx.items.length < 3) throw new Error("restart-bind: expected (restart-bind ((name fn) ...) body...)");
+      const bindsList = expectList(stx.items[1], "restart-bind: bindings must be list");
+      let envBind = env;
+      const bindsOut: Syntax[] = [];
+      for (const b of bindsList.items) {
+        const pair = expectList(b, "restart-bind: binding must be list");
+        if (pair.items.length !== 2) throw new Error("restart-bind: binding must be (name fn)");
+        const fnR = expandExpr(pair.items[1], envBind, c);
+        envBind = fnR.env;
+        bindsOut.push({ ...pair, items: [pair.items[0], fnR.stx] });
+      }
+      let envBody = envBind;
+      const bodyOut: Syntax[] = [];
+      for (let i = 2; i < stx.items.length; i++) {
+        const r = expandExpr(stx.items[i], envBody, c);
+        envBody = r.env;
+        bodyOut.push(r.stx);
+      }
+      const bindsListOut: Syntax = { ...bindsList, items: bindsOut };
+      return { stx: { ...stx, items: [stx.items[0], bindsListOut, ...bodyOut] }, env: envBody };
     }
   }
 

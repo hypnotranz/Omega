@@ -1,5 +1,7 @@
 // test/live/debugger-e2e.spec.ts
 // End-to-end test: Real LLM using real debugger via PortalImpl
+//
+// Run with: RUN_LIVE_TESTS=true npm test
 
 import { describe, it, expect } from "vitest";
 import { COWStore } from "../../src/core/eval/store";
@@ -17,22 +19,7 @@ import { VUnit } from "../../src/core/eval/values";
 import "../../src/core/oracle/plugins";
 import { ModelSelectorAdapter } from "../../src/core/oracle/plugins";
 import type { OracleResp, OracleReq, EnvRef, StateRef } from "../../src/core/oracle/protocol";
-import * as fs from "fs";
-import * as path from "path";
-
-function loadApiKey(): string | undefined {
-  try {
-    const configPath = path.join(__dirname, "../../../LambdaRLM/config.yaml");
-    const content = fs.readFileSync(configPath, "utf8");
-    const match = content.match(/api_key:\s*(\S+)/);
-    return match?.[1];
-  } catch {
-    return process.env.OPENAI_API_KEY;
-  }
-}
-
-const OPENAI_API_KEY = loadApiKey();
-const hasKey = !!OPENAI_API_KEY;
+import { runLive, OPENAI_API_KEY } from "./config";
 
 // Setup real runtime and portal with pre-evaluated state
 async function setupRealRuntime(src: string) {
@@ -68,7 +55,7 @@ async function setupRealRuntime(src: string) {
 }
 
 describe("Debugger End-to-End with Real LLM", () => {
-  it.runIf(hasKey)("PortalImpl returns REAL debugger data", async () => {
+  it.runIf(runLive)("PortalImpl returns REAL debugger data", async () => {
     // Setup with pre-defined values
     const { portal, stateRef } = await setupRealRuntime(`
       (define my-value 42)
@@ -127,7 +114,7 @@ describe("Debugger End-to-End with Real LLM", () => {
     expect(envData.count).toBeGreaterThan(10); // Primitives + user defs
   }, 30000);
 
-  it.runIf(hasKey)("Real LLM calls omega_observe, PortalImpl returns REAL data", async () => {
+  it.runIf(runLive)("Real LLM calls omega_observe, PortalImpl returns REAL data", async () => {
     // Setup with a test variable
     const { portal, envRef, stateRef } = await setupRealRuntime(`
       (define test-var 123)

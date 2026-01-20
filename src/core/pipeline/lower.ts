@@ -161,14 +161,64 @@ export function lowerSyntax(stx: Syntax, env: Env, phase = 0): Expr {
       case "handle": {
         if (items.length < 2) throw new Error("handle: expected (handle body clauses...)");
         const body = lowerSyntax(items[1], env, phase);
-        const handler = lowerHandler(items.slice(2), env, phase);
-        return { tag: "Handle", body, handler };
-      }
+      const handler = lowerHandler(items.slice(2), env, phase);
+      return { tag: "Handle", body, handler };
+    }
 
-      case "match": {
-        // (match scrutinee (pat1 body1) (pat2 body2) ...)
-        if (items.length < 2) throw new Error("match: expected (match scrutinee clauses...)");
-        const scrutinee = lowerSyntax(items[1], env, phase);
+    case "handler-bind": {
+      if (items.length < 3) throw new Error("handler-bind: expected (handler-bind ((type handler) ...) body...)");
+      const bindsList = expectList(items[1], "handler-bind: bindings must be list");
+      const handlers = bindsList.items.map(bp0 => {
+        const bp = expectList(bp0, "handler-bind: binding must be list");
+        if (bp.items.length !== 2) throw new Error("handler-bind: binding must be (type handler)");
+        const typeId = expectIdent(bp.items[0], "handler-bind: type must be ident");
+        const handlerExpr = lowerSyntax(bp.items[1], env, phase);
+        return { type: typeId.name, handler: handlerExpr };
+      });
+      const bodyForms = items.slice(2).map(x => lowerSyntax(x, env, phase));
+      const body: Expr = bodyForms.length === 1 ? bodyForms[0] : { tag: "Begin", exprs: bodyForms };
+      const handlerPairs: Expr[] = handlers.map(h => ({
+        tag: "App",
+        fn: { tag: "Var", name: "cons" },
+        args: [
+          { tag: "Quote", datum: { sym: h.type } },
+          h.handler,
+        ],
+      }));
+      const handlerList: Expr = { tag: "App", fn: { tag: "Var", name: "list" }, args: handlerPairs };
+      const thunk: Expr = { tag: "Lambda", params: [], body };
+      return { tag: "App", fn: { tag: "Var", name: "handler-bind" }, args: [handlerList, thunk] };
+    }
+
+    case "restart-bind": {
+      if (items.length < 3) throw new Error("restart-bind: expected (restart-bind ((name fn) ...) body...)");
+      const bindsList = expectList(items[1], "restart-bind: bindings must be list");
+      const restarts = bindsList.items.map(bp0 => {
+        const bp = expectList(bp0, "restart-bind: binding must be list");
+        if (bp.items.length !== 2) throw new Error("restart-bind: binding must be (name fn)");
+        const nameId = expectIdent(bp.items[0], "restart-bind: name must be ident");
+        const fnExpr = lowerSyntax(bp.items[1], env, phase);
+        return { name: nameId.name, fn: fnExpr };
+      });
+      const bodyForms = items.slice(2).map(x => lowerSyntax(x, env, phase));
+      const body: Expr = bodyForms.length === 1 ? bodyForms[0] : { tag: "Begin", exprs: bodyForms };
+      const restartPairs: Expr[] = restarts.map(r => ({
+        tag: "App",
+        fn: { tag: "Var", name: "cons" },
+        args: [
+          { tag: "Quote", datum: { sym: r.name } },
+          r.fn,
+        ],
+      }));
+      const restartsList: Expr = { tag: "App", fn: { tag: "Var", name: "list" }, args: restartPairs };
+      const thunk: Expr = { tag: "Lambda", params: [], body };
+      return { tag: "App", fn: { tag: "Var", name: "restart-bind" }, args: [restartsList, thunk] };
+    }
+
+    case "match": {
+      // (match scrutinee (pat1 body1) (pat2 body2) ...)
+      if (items.length < 2) throw new Error("match: expected (match scrutinee clauses...)");
+      const scrutinee = lowerSyntax(items[1], env, phase);
         const clauses = items.slice(2).map(cl => {
           const clauseList = expectList(cl, "match clause must be list");
           if (clauseList.items.length < 2) throw new Error("match clause must have pattern and body");
@@ -196,6 +246,21 @@ export function lowerSyntax(stx: Syntax, env: Env, phase = 0): Expr {
           fn: { tag: "Var", name: "list" },
           args: thunks,
         };
+        return { tag: "Effect", op: "amb.choose", args: [listExpr] };
+      }
+
+      case "mplus": {
+        // (mplus e1 e2 ... en) - binary/variadic monadic choice (lazy)
+        // Desugar to amb.choose over zero-arg thunks to avoid eager branch evaluation
+        if (items.length === 1) {
+          return { tag: "Effect", op: "amb.fail", args: [] };
+        }
+        const thunks: Expr[] = items.slice(1).map(alt => ({
+          tag: "Lambda",
+          params: [],
+          body: lowerSyntax(alt, env, phase),
+        }));
+        const listExpr: Expr = { tag: "App", fn: { tag: "Var", name: "list" }, args: thunks };
         return { tag: "Effect", op: "amb.choose", args: [listExpr] };
       }
 
