@@ -12,6 +12,7 @@ config.yaml
 .agent-sessions/
 .beads/
 .claude/
+.bd-wrapper-used
 .agent-questions.log
 .agent-status.log
 agent-activity.log
