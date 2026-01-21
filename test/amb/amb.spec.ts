@@ -1,3 +1,13 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * AMB (Nondeterministic Choice) Tests
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Quick Reference: docs/USER-MANUAL--00--Quick-Reference.md#5-nondeterministic-search-amb
+ * Full Chapter:    docs/USER-MANUAL--05--Nondeterministic-Search.md
+ * Demo:            demo/by-chapter/ch05-nondeterministic.ts
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 // AMB and Streams Semantic Tests (Prompt 4)
 // Tests 4.1-4.8: Nondeterminism and lazy streams with semantic predicates
 //
@@ -5,6 +15,14 @@
 // - amb for multi-shot backtracking with require-based pruning
 // - Streams for lazy, demand-driven semantic computation
 // - Integration of amb/streams with OracleProcs
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Quick Reference: docs/USER-MANUAL--00--Quick-Reference.md#5-nondeterministic-search-amb
+ * Full Chapter:    docs/USER-MANUAL--05--Nondeterministic-Search.md
+ * Demo:            demo/by-chapter/ch05-nondeterministic.ts
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { COWStore } from "../../src/core/eval/store";

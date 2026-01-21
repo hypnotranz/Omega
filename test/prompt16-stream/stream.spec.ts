@@ -1,6 +1,24 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Streams + Laziness Tests
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Quick Reference: docs/USER-MANUAL--00--Quick-Reference.md#7-lazy-streams
+ * Full Chapter:    docs/USER-MANUAL--07--Lazy-Streams.md
+ * Demo:            demo/by-chapter/ch07-lazy-streams.ts
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 // test/prompt16-stream/stream.spec.ts
 // SOURCE: ARCHITECTURE/32-LANGUAGE-OFFICIAL-13-IMPLEMENTATION-16.md
 // Tests 16.1-16.8: Streams + Laziness
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Quick Reference: docs/USER-MANUAL--00--Quick-Reference.md#7-lazy-streams
+ * Full Chapter:    docs/USER-MANUAL--07--Lazy-Streams.md
+ * Demo:            demo/by-chapter/ch07-lazy-streams.ts
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { Val, PromiseVal, IntVal, ListVal } from "../../src/core/eval/values";
