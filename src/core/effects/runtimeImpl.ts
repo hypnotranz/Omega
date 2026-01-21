@@ -34,7 +34,7 @@ import { sha256JSON } from "../artifacts/hash";
 // Governance imports
 import type { Profile } from "../governance/profile";
 import { DEFAULT_PROFILE } from "../governance/profile";
-import { capRequire, capHas } from "../governance/caps";
+import { capRequire, capHas, type CapSet } from "../governance/caps";
 import type { BudgetTracker } from "../governance/budgets";
 
 // Pipeline imports for parsing text to expressions
@@ -43,6 +43,11 @@ import { runToCompletionWithState } from "../eval/run";
 
 export interface CommitAdapter {
   commit(payload: Val, ctxDigest: string): Promise<Val>;
+}
+
+function requireCommitCapability(caps: CapSet, required: string, context: string): void {
+  if (capHas(caps, "commit.*")) return;
+  capRequire(caps, required, context);
 }
 
 function findBoundaryIndex(kont: State["kont"], hid: string): number {
@@ -305,6 +310,7 @@ export class RuntimeImpl implements Runtime {
     if (opcall.op === "oracle.apply.op") {
       // Consume oracle turn budget
       this.budget?.consumeOracleTurn();
+      const needProv = needsProvenance(state);
 
       // Capability checks for oracle apply
       capRequire(this.profile.caps, "eval", "oracle.apply.op");
@@ -336,7 +342,17 @@ export class RuntimeImpl implements Runtime {
 
       // Drive session
       const meaning = await runOracleSession(session, portal);
-      const v = meaning.denotation ?? ({ tag: "Unit" } as Val);
+
+      let enrichedMeaning = meaning as MeaningVal;
+      if (needProv) {
+        const payload: Val = {
+          tag: "Vector",
+          items: [((proc as any).spec ?? ({ tag: "Unit" } as Val)) as Val, argVec as Val],
+        };
+        enrichedMeaning = await attachOracleEvidence(enrichedMeaning, payload, state);
+      }
+
+      const v = enrichedMeaning.denotation ?? ({ tag: "Unit" } as Val);
 
       // Optional adoption
       const adoptEnv = portal.consumeAdoptEnvRef() ?? meaning.adoptEnvRef;
@@ -351,7 +367,7 @@ export class RuntimeImpl implements Runtime {
 
     // Patch Set D: commit.op with truth regime enforcement
     if (opcall.op === "commit.op") {
-      capRequire(this.profile.caps, "commit.*", "commit");
+      requireCommitCapability(this.profile.caps, "commit.method", "commit");
 
       const kind = opcall.args[0]?.tag === "Str" ? (opcall.args[0] as any).s : "unknown";
       const payload = opcall.args[1] ?? opcall.args[0] ?? { tag: "Unit" };
@@ -376,7 +392,7 @@ export class RuntimeImpl implements Runtime {
     // Args: (kind: Str, payload: Val, tests: Vec<Closure>) or (payload, tests)
     // Runs each test thunk; all must return truthy for commit to proceed
     if (opcall.op === "commit-tested.op") {
-      capRequire(this.profile.caps, "commit.*", "commit-tested");
+      requireCommitCapability(this.profile.caps, "commit.method", "commit-tested");
       capRequire(this.profile.caps, "test", "commit-tested");
 
       // Parse arguments: (kind payload tests) or (payload tests)
@@ -445,8 +461,7 @@ export class RuntimeImpl implements Runtime {
     // Args: (meaning: MeaningVal) where meaning has .rewrite and .obligations
     // Discharges obligations, records evidence, then commits if all pass
     if (opcall.op === "commit/rewrite.op") {
-      capRequire(this.profile.caps, "commit.*", "commit/rewrite");
-      capRequire(this.profile.caps, "commit.rewrite", "commit/rewrite");
+      requireCommitCapability(this.profile.caps, "commit.rewrite", "commit/rewrite");
 
       const meaningArg = opcall.args[0];
       if (!meaningArg || !isMeaning(meaningArg)) {
@@ -496,15 +511,31 @@ export class RuntimeImpl implements Runtime {
         }
 
         if (obl.tag === "OblNoMatch") {
-          // Check that pattern does NOT appear in output (rewrite) or all (original + rewrite)
-          const target = obl.scope === "output" ? meaning.rewrite : meaning.rewrite;
-          if (target) {
-            const { ok } = matchAST(obl.pattern, target);
+          const targets: Val[] = [];
+          const unwrap = (v: Val): unknown => {
+            if ((v as any)?.tag === "Syntax" && "stx" in (v as any)) return (v as any).stx;
+            return v;
+          };
+          if (obl.scope === "all") {
+            if (meaning.rewrite) targets.push(meaning.rewrite);
+            if (meaning.residual) targets.push(meaning.residual);
+          } else if (meaning.rewrite) {
+            targets.push(meaning.rewrite);
+          }
+
+          for (const target of targets) {
+            const { ok } = matchAST(obl.pattern, unwrap(target));
             if (ok) {
               throw new Error(`commit/rewrite.op: OblNoMatch failed - pattern found in ${obl.scope}`);
             }
           }
-          evidence.push({ tag: "NoMatchEvidence", pattern: obl.pattern, searched: 1, found: 0 });
+
+          evidence.push({
+            tag: "NoMatchEvidence",
+            pattern: obl.pattern,
+            searched: targets.length,
+            found: 0,
+          });
         }
 
         if (obl.tag === "OblEqExt") {

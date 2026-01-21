@@ -6,6 +6,7 @@ import { runToCompletionWithState } from "../../src/core/eval/run";
 import { compileTextToExpr } from "../../src/core/pipeline/compileText";
 import { installPrims } from "../helpers/prims";
 import { ProvenanceGraph, type SourceChecker } from "../../src/core/provenance/graph";
+import type { ProvenanceStore } from "../../src/core/provenance/store/interface";
 import { RuntimeImpl } from "../../src/core/effects/runtimeImpl";
 import { ScriptedOracleAdapter, SnapshotRepo, InMemoryReceiptStore, mockCommit } from "../helpers/runtime";
 import { setProvenanceGraph, setSourceChecker } from "../../src/core/provenance/context";
@@ -14,6 +15,7 @@ export type EvalOpts = {
   graph?: ProvenanceGraph;
   bindings?: Record<string, Val>;
   sourceChecker?: SourceChecker;
+  provenanceStore?: ProvenanceStore;
 };
 
 export function listToArray(lst: Val): Val[] {
@@ -52,6 +54,7 @@ export function initialStateWithProvenance(src: string, opts: EvalOpts = {}): St
 
   const graph = opts.graph ?? new ProvenanceGraph();
   const checker = opts.sourceChecker;
+  const provenanceStore = opts.provenanceStore;
   setProvenanceGraph(graph);
   if (checker) setSourceChecker(checker);
 
@@ -63,6 +66,7 @@ export function initialStateWithProvenance(src: string, opts: EvalOpts = {}): St
     handlers: [],
     provenanceGraph: graph,
     provenanceSourceChecker: checker,
+    provenanceStore,
   };
 }
 

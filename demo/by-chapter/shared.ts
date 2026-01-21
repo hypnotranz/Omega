@@ -4,7 +4,7 @@
 import path from "path";
 import { pathToFileURL } from "url";
 import { OmegaRuntime } from "../../src/runtime";
-import type { Val, ListVal, MeaningVal } from "../../src/core/eval/values";
+import type { Val, ListVal } from "../../src/core/eval/values";
 import type { OracleAdapter, OracleInit } from "../../src/core/oracle/adapter";
 import type { OracleSession } from "../../src/core/oracle/protocol";
 import type {
@@ -16,9 +16,9 @@ import type {
   InvariantResult,
 } from "../harness/types";
 
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 // Oracle Adapter that forwards to the demo harness oracle
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 
 function valToPrompt(v: Val): string {
   switch (v.tag) {
@@ -38,6 +38,8 @@ function valToPrompt(v: Val): string {
       return v.entries
         .map(([k, val]) => `${valToPrompt(k)}:${valToPrompt(val)}`)
         .join(" ");
+    case "Meaning":
+      return valToPrompt(v.denotation as Val);
     default:
       return JSON.stringify(v);
   }
@@ -116,10 +118,9 @@ class DemoOracleAdapter implements OracleAdapter {
         ctx.ledger.record("infer.call", { prompt });
         const resp = ctx.oracle.handle("InferOp", req) as any;
         const denotation = jsToVal(resp?.value ?? resp ?? { tag: "Unit" });
-        const meaning: MeaningVal = { tag: "Meaning", denotation, confidence: 0.92 };
         ctx.ledger.record("infer.result", { value: denotation });
-        yield { tag: "ReqReturn", result: meaning };
-        return meaning;
+        yield { tag: "ReqReturn", result: denotation };
+        return denotation;
       })();
     }
 
@@ -131,10 +132,9 @@ class DemoOracleAdapter implements OracleAdapter {
       ctx.ledger.record("oracle.request", { op: spec, args });
       const resp = ctx.oracle.handle("InferOp", req) as any;
       const denotation = jsToVal(resp?.value ?? resp ?? { tag: "Unit" });
-      const meaning: MeaningVal = { tag: "Meaning", denotation, confidence: 0.9 };
       ctx.ledger.record("oracle.response", { op: spec, value: denotation });
-      yield { tag: "ReqReturn", result: meaning };
-      return meaning;
+      yield { tag: "ReqReturn", result: denotation };
+      return denotation;
     })();
   }
 }
@@ -147,9 +147,9 @@ export function createRuntime(ctx: DemoContext): OmegaRuntime {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 // Oracle scripting helpers
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 
 export function registerCommonOracleScripts(ctx: DemoContext): void {
   const positiveSignals = ["love", "delight", "helpful", "glad", "grateful"];
@@ -227,7 +227,7 @@ export function registerCommonOracleScripts(ctx: DemoContext): void {
       if (payloadText.includes("rewrite") || payloadText.includes("convert")) {
         const target = payloadText.includes("empathetic") ? "empathetic" : payloadText.includes("formal") ? "formal" : "concise";
         const variants = ["gentle", "direct", "warm", "calm"];
-        const choice = context.random ? variants[Math.floor(context.random()() * variants.length)] : variants[0];
+        const choice = context.random ? variants[Math.floor(context.random() * variants.length)] : variants[0];
         const source = args[0] ?? prompt;
         return {
           value: `[${choice}/${target}] ${String(source).slice(0, 80)}`,
@@ -253,7 +253,7 @@ export function registerCommonOracleScripts(ctx: DemoContext): void {
           "Do you consent to a temporary workaround?",
           "Which stakeholder should approve the next step?",
         ];
-        const choice = Math.floor(context.random()() * suggestions.length);
+        const choice = Math.floor(context.random() * suggestions.length);
         return { value: suggestions[choice], evidence: "follow-up" };
       }
 
@@ -266,9 +266,9 @@ export function registerCommonOracleScripts(ctx: DemoContext): void {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 // Demo factory
-// ─────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------
 
 export type ChapterProgram = {
   label: string;
@@ -290,8 +290,8 @@ export function createChapterDemo(config: ChapterConfig): DemoDefinition {
   const run = async (ctx: DemoContext): Promise<DemoResult> => {
     const started = Date.now();
     ctx.oracle.reset?.();
-    registerCommonOracleScripts(ctx);
     config.setupOracle?.(ctx);
+    registerCommonOracleScripts(ctx);
 
     const omega = createRuntime(ctx);
     const outputs: unknown[] = [];

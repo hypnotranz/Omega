@@ -41,7 +41,7 @@ Each job file includes:
 
 | Job ID | Title | Priority | Status | Depends On |
 |--------|-------|----------|--------|------------|
-| [008](./008-SEARCH-PATTERNS-SOLVERS.md) | Search Patterns & Composable Solvers | P2 - Nice to Have | NOT STARTED | 005, 006 |
+| [008](./008-SEARCH-PATTERNS-SOLVERS.md) | Search Patterns & Composable Solvers | P2 - Nice to Have | DONE | 005, 006 |
 
 ### Phase D: Architecture Alignment (FrameIR & Ports)
 
@@ -56,6 +56,18 @@ These jobs implement the architecture specified in `ARCHITECTURE-LANGUAGES-*.md`
 | [013](./013-LINT-PASSES.md) | Lint Passes | P1 - Important | NOT STARTED | 009, 010 |
 | [014](./014-COMPILATION-PIPELINE.md) | Compilation Pipeline | P1 - Important | NOT STARTED | 009 |
 | [015](./015-REPLAY-SYSTEM.md) | Replay System | P1 - Important | NOT STARTED | 011, 012 |
+
+### Phase E: Documentation & Demos
+
+| Job ID | Title | Priority | Status | Depends On |
+|--------|-------|----------|--------|------------|
+| [016](./016-QUICK-REFERENCE-AND-DEMOS.md) | Quick Reference Manual & Demo Suite | P1 - Important | NOT STARTED | - |
+
+### Phase F: Infrastructure & Cleanup
+
+| Job ID | Title | Priority | Status | Depends On |
+|--------|-------|----------|--------|------------|
+| [017](./017-SEPARATE-CLI-TOOLS.md) | Separate CLI Tools (REPL/Debugger) | P2 - Cleanup | NOT STARTED | - |
 
 ---
 

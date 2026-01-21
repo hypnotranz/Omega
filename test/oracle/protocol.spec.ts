@@ -1,3 +1,13 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * LLM Calls as Functions Tests
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Quick Reference: docs/USER-MANUAL--00--Quick-Reference.md#2-llm-calls-as-functions
+ * Full Chapter:    docs/USER-MANUAL--02--Llm-Calls-As-Functions.md
+ * Demo:            demo/by-chapter/ch02-llm-calls.ts
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 // Test that the Oracle Protocol actually works: (effect infer.op ...) triggers
 // ScriptedOracleAdapter, which does REPL re-entry via ReqEval, and returns result.
 //

@@ -36,25 +36,25 @@ export function merkleize(flow: FlowIR): Map<FlowIR, NodeHash> {
 function replaceChildFlowsWithHashes(node: FlowIR, getHash: (f: FlowIR) => NodeHash): NodeBase {
   switch (node.tag) {
     case "FBind":
-      return { ...node, flow: getHash(node.flow) } as NodeBase;
+      return { ...node, flow: getHash(node.flow) } as unknown as NodeBase;
 
     case "FCatch":
-      return { ...node, flow: getHash(node.flow) } as NodeBase;
+      return { ...node, flow: getHash(node.flow) } as unknown as NodeBase;
 
     case "FWithBudget":
-      return { ...node, flow: getHash(node.flow) } as NodeBase;
+      return { ...node, flow: getHash(node.flow) } as unknown as NodeBase;
 
     case "FWithTimeout":
-      return { ...node, flow: getHash(node.flow) } as NodeBase;
+      return { ...node, flow: getHash(node.flow) } as unknown as NodeBase;
 
     case "FAll":
     case "FRace":
     case "FAny":
     case "FSequence":
-      return { ...node, flows: node.flows.map(getHash) } as NodeBase;
+      return { ...node, flows: node.flows.map(getHash) } as unknown as NodeBase;
 
     case "FBranch":
-      return { ...node, then: getHash(node.then), else: getHash(node.else) } as NodeBase;
+      return { ...node, then: getHash(node.then), else: getHash(node.else) } as unknown as NodeBase;
 
     // Nodes without child flows
     case "FPure":

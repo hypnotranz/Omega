@@ -1,6 +1,9 @@
-// test/oracle/plugins.integration.spec.ts
+// test/live/plugins.integration.spec.ts
+// LIVE TESTS - Makes real API calls to LLM providers
 // Integration tests for real LLM plugins with REAL PortalImpl
 // NO MOCKS - all eval/observe requests handled by real interpreter
+//
+// Run with: RUN_LIVE_TESTS=true npx vitest run test/live/
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { COWStore } from "../../src/core/eval/store";

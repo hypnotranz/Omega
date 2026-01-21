@@ -1,3 +1,13 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Semantic Facts & Logic Tests
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Quick Reference: docs/USER-MANUAL--00--Quick-Reference.md#27-logic-programming-with-semantic-facts
+ * Full Chapter:    docs/USER-MANUAL--27--Logic-Programming-With-Semantic-Facts.md
+ * Demo:            demo/by-chapter/ch27-logic-programming.ts
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 import { describe, it, expect } from "vitest";
 import { evalOne, listToArray, expectBool, expectNum, expectStr, asFactStore } from "./utils";
 

@@ -131,3 +131,9 @@ export type { ProvenanceStore, StoredReceipt, ReceiptFilter } from "./core/prove
 
 export * from "./frameir";
 export * from "./outcome";
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REGISTRY (Primitive descriptors)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export * from "./registry";

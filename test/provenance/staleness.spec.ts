@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { ProvenanceGraph, type SourceChecker } from "../../src/core/provenance/graph";
+import { ProvenanceGraph, type ProvenanceGraphData, type SourceChecker } from "../../src/core/provenance/graph";
 import { computeSourceHash, evidenceId, type DerivedEvidence, type OracleEvidence } from "../../src/core/provenance/evidence";
+import { matchesFilter, type ProvenanceStore, type StoredReceipt } from "../../src/core/provenance/store/interface";
 import type { MeaningVal } from "../../src/core/oracle/meaning";
 import type { Val } from "../../src/core/eval/values";
 import { evalWithProvenance, initialStateWithProvenance, listToArray, mapToObject } from "./helpers.ts";
@@ -23,6 +24,37 @@ class StubSourceChecker implements SourceChecker {
   }
   set(receiptId: string, hash: string): void {
     this.hashes[receiptId] = hash;
+  }
+}
+
+class StubProvenanceStore implements ProvenanceStore {
+  receipts: StoredReceipt[] = [];
+  graphs: ProvenanceGraphData[] = [];
+
+  async storeReceipt(receipt: StoredReceipt): Promise<void> {
+    this.receipts.push(receipt);
+  }
+
+  async getReceipt(id: string): Promise<StoredReceipt | undefined> {
+    return this.receipts.find(r => r.id === id);
+  }
+
+  async queryReceipts(filter = {}): Promise<StoredReceipt[]> {
+    return this.receipts.filter(r => matchesFilter(r, filter));
+  }
+
+  async storeGraph(graph: ProvenanceGraphData): Promise<void> {
+    this.graphs.push(graph);
+  }
+
+  async loadGraph(): Promise<ProvenanceGraphData | undefined> {
+    return this.graphs[this.graphs.length - 1];
+  }
+
+  async pruneOlderThan(timestamp: number): Promise<number> {
+    const before = this.receipts.length;
+    this.receipts = this.receipts.filter(r => (r.timestamp ?? 0) >= timestamp);
+    return before - this.receipts.length;
   }
 }
 
@@ -96,5 +128,29 @@ describe("Provenance staleness", () => {
     expect(fields["stale?"]).toMatchObject({ tag: "Bool", b: true });
     expect(fields["stale-count"]).toMatchObject({ tag: "Num", n: 1 });
     expect(fields["total-sources"]).toMatchObject({ tag: "Num", n: 1 });
+  });
+
+  it("attaches oracle.apply provenance evidence when provenance is enabled", async () => {
+    const graph = new ProvenanceGraph();
+    const provStore = new StubProvenanceStore();
+    const runtime = new RuntimeImpl(new ScriptedOracleAdapter(), new SnapshotRepo(), new InMemoryReceiptStore("off"), mockCommit);
+
+    const program = `
+      (begin
+        (define inc (oracle-lambda (x) "return-meaning"))
+        (inc 2))
+    `;
+
+    const { value } = await runToCompletionWithState(
+      runtime,
+      initialStateWithProvenance(program, { graph, provenanceStore: provStore })
+    );
+
+    expect(value).toMatchObject({ tag: "Num", n: 3 });
+    const nodes = graph.toJSON().nodes;
+    expect(nodes.length).toBe(1);
+    expect(nodes[0].evidence.tag).toBe("OracleEvidence");
+    expect(provStore.receipts).toHaveLength(1);
+    expect(provStore.receipts[0].response).toMatchObject({ tag: "Meaning" });
   });
 });

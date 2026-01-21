@@ -72,6 +72,8 @@ export type BasePluginConfig = {
   temperature?: number;
   systemPrompt?: string;
   baseUrl?: string;
+  /** Enable streaming mode - accumulates responses from stream chunks */
+  streaming?: boolean;
 };
 
 /** Config validation result */

@@ -15,6 +15,8 @@ export type LLMConfig = {
   maxTokens?: number;
   temperature?: number;
   systemPrompt?: string;
+  /** Enable streaming mode - accumulates tool calls from stream chunks */
+  streaming?: boolean;
 };
 
 /**

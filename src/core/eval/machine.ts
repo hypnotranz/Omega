@@ -9,6 +9,8 @@ import type { Val } from "./values";
 import type { OpCall } from "../effects/opcall";
 import type { Profile, RuntimeBudget, RuntimeSecurity } from "../governance/profile";
 import type { ConditionHandler, RestartBinding, ConditionVal } from "../conditions/types";
+import type { ProvenanceGraph, SourceChecker } from "../provenance/graph";
+import type { ProvenanceStore } from "../provenance/store/interface";
 
 export type Control =
   | { tag: "Expr"; e: Expr }
@@ -63,6 +65,11 @@ export type State = {
 
   /** Current security context - intersection of profile caps and context caps */
   sec?: RuntimeSecurity;
+
+  // Provenance graph + receipt store (optional)
+  provenanceGraph?: ProvenanceGraph;
+  provenanceStore?: ProvenanceStore;
+  provenanceSourceChecker?: SourceChecker;
 };
 
 export type StepOutcome =

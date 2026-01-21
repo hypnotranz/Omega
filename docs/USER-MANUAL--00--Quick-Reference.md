@@ -1,4 +1,4 @@
-﻿# OmegaLLM Quick Reference
+# OmegaLLM Quick Reference
 
 A Lisp where LLM calls are expressions. Use `(effect infer.op "prompt")` to call an LLM.
 
@@ -16,7 +16,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (echo greeting)
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--01--Getting-Started.md) | ðŸŽ® [Demo](../demo/by-chapter/ch01-getting-started.ts)
+[Full Chapter](./USER-MANUAL--01--Getting-Started.md) | [Demo](../demo/by-chapter/ch01-getting-started.ts)
 
 ---
 
@@ -24,7 +24,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 
 **Call infer.op inside reusable procedures.**
 
-`effect infer.op` invokes the oracle and returns the modelâ€™s string answer so you can treat it like any other value.
+`effect infer.op` invokes the oracle and returns the model's string answer so you can treat it like any other value.
 
 ```lisp
 (define (analyze-sentiment text)
@@ -33,7 +33,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (analyze-sentiment "I love how carefully you explained the migration steps.")
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--02--Llm-Calls-As-Functions.md) | ðŸŽ® [Demo](../demo/by-chapter/ch02-llm-calls.ts)
+[Full Chapter](./USER-MANUAL--02--Llm-Calls-As-Functions.md) | [Demo](../demo/by-chapter/ch02-llm-calls.ts)
 
 ---
 
@@ -57,7 +57,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (filter is-complaint? messages)
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--03--Functional-Composition.md) | ðŸŽ® [Demo](../demo/by-chapter/ch03-composition.ts)
+[Full Chapter](./USER-MANUAL--03--Functional-Composition.md) | [Demo](../demo/by-chapter/ch03-composition.ts)
 
 ---
 
@@ -80,7 +80,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
   (classify-risk "Routine maintenance window notification with no user impact."))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--04--Higher-Order-Llm-Functions.md) | ðŸŽ® [Demo](../demo/by-chapter/ch04-higher-order.ts)
+[Full Chapter](./USER-MANUAL--04--Higher-Order-Llm-Functions.md) | [Demo](../demo/by-chapter/ch04-higher-order.ts)
 
 ---
 
@@ -105,7 +105,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
     reply))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--05--Nondeterministic-Search.md) | ðŸŽ® [Demo](../demo/by-chapter/ch05-nondeterministic.ts)
+[Full Chapter](./USER-MANUAL--05--Nondeterministic-Search.md) | [Demo](../demo/by-chapter/ch05-nondeterministic.ts)
 
 ---
 
@@ -121,7 +121,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
   (list "Rewrite this status update in three distinct tones: warm, concise, and executive:" request))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--06--Multi-Shot-Sampling.md) | ðŸŽ® [Demo](../demo/by-chapter/ch06-multi-shot.ts)
+[Full Chapter](./USER-MANUAL--06--Multi-Shot-Sampling.md) | [Demo](../demo/by-chapter/ch06-multi-shot.ts)
 
 ---
 
@@ -147,7 +147,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (stream->list queued 2)
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--07--Lazy-Streams.md) | ðŸŽ® [Demo](../demo/by-chapter/ch07-lazy-streams.ts)
+[Full Chapter](./USER-MANUAL--07--Lazy-Streams.md) | [Demo](../demo/by-chapter/ch07-lazy-streams.ts)
 
 ---
 
@@ -165,7 +165,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
   (explain "Confirm the tone matcher backtracked to the apologetic branch."))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--08--The-Debugger.md) | ðŸŽ® [Demo](../demo/by-chapter/ch08-debugger.ts)
+[Full Chapter](./USER-MANUAL--08--The-Debugger.md) | [Demo](../demo/by-chapter/ch08-debugger.ts)
 
 ---
 
@@ -181,7 +181,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (ask-runtime "How many urgent tickets are active? Call (length active-tickets) before answering.")
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--09--The-Agentic-Repl.md) | ðŸŽ® [Demo](../demo/by-chapter/ch09-agentic-repl.ts)
+[Full Chapter](./USER-MANUAL--09--The-Agentic-Repl.md) | [Demo](../demo/by-chapter/ch09-agentic-repl.ts)
 
 ---
 
@@ -204,7 +204,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (list label rewrites)
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--10--Full-Api-Reference.md) | ðŸŽ® [Demo](../demo/by-chapter/ch10-api-reference.ts)
+[Full Chapter](./USER-MANUAL--10--Full-Api-Reference.md) | [Demo](../demo/by-chapter/ch10-api-reference.ts)
 
 ---
 
@@ -224,7 +224,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
   "Team, let's present findings with clarity and keep the tone reassuring for regulators.")
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--11--Semantic-Procedures-As-Black-Boxes.md) | ðŸŽ® [Demo](../demo/by-chapter/ch11-semantic-procedures.ts)
+[Full Chapter](./USER-MANUAL--11--Semantic-Procedures-As-Black-Boxes.md) | [Demo](../demo/by-chapter/ch11-semantic-procedures.ts)
 
 ---
 
@@ -248,7 +248,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
   (effect infer.op (list "Summarize iteratively with cost awareness: " report)))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--12--Inference-Processes-Recursion-And-Iteration-In-Semantic-Space.md) | ðŸŽ® [Demo](../demo/by-chapter/ch12-inference-processes.ts)
+[Full Chapter](./USER-MANUAL--12--Inference-Processes-Recursion-And-Iteration-In-Semantic-Space.md) | [Demo](../demo/by-chapter/ch12-inference-processes.ts)
 
 ---
 
@@ -274,7 +274,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (fold-left merge "Start with a balanced plan." opinions)
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--13--Higher-Order-Inference.md) | ðŸŽ® [Demo](../demo/by-chapter/ch13-higher-order-inference.ts)
+[Full Chapter](./USER-MANUAL--13--Higher-Order-Inference.md) | [Demo](../demo/by-chapter/ch13-higher-order-inference.ts)
 
 ---
 
@@ -291,16 +291,16 @@ This reference has one section per chapter of the full manual. Each shows the ke
 
 (list
   (is-haiku? "Quiet dashboards hum / Incidents fall back asleep / Teams breathe evenly")
-  (has-greeting? "Hello team, thank you for the latest buildâ€”can we add a changelog?"))
+(has-greeting? "Hello team, thank you for the latest build - can we add a changelog?"))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--14--Semantic-Data-Abstraction.md) | ðŸŽ® [Demo](../demo/by-chapter/ch14-semantic-data.ts)
+[Full Chapter](./USER-MANUAL--14--Semantic-Data-Abstraction.md) | [Demo](../demo/by-chapter/ch14-semantic-data.ts)
 
 ---
 
 ## 15. Sequences as Semantic Interfaces
 
-**Pipeline complaints â†' issues â†' prioritization.**
+**Pipeline complaints -> issues -> prioritization.**
 
 ```lisp
 (define complaints
@@ -320,7 +320,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (map prioritize (map extract-issue complaints))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--15--Sequences-As-Semantic-Interfaces.md) | ðŸŽ® [Demo](../demo/by-chapter/ch15-sequences.ts)
+[Full Chapter](./USER-MANUAL--15--Sequences-As-Semantic-Interfaces.md) | [Demo](../demo/by-chapter/ch15-sequences.ts)
 
 ---
 
@@ -340,7 +340,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
   (same-meaning? "This is delightful" "This is unacceptable"))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--16--Symbolic-Semantic-Data.md) | ðŸŽ® [Demo](../demo/by-chapter/ch16-symbolic-semantic.ts)
+[Full Chapter](./USER-MANUAL--16--Symbolic-Semantic-Data.md) | [Demo](../demo/by-chapter/ch16-symbolic-semantic.ts)
 
 ---
 
@@ -355,7 +355,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
   (effect infer.op (list "Rewrite in a candid peer-to-peer register: " complaint)))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--17--Multiple-Representations-Of-Meaning.md) | ðŸŽ® [Demo](../demo/by-chapter/ch17-multiple-representations.ts)
+[Full Chapter](./USER-MANUAL--17--Multiple-Representations-Of-Meaning.md) | [Demo](../demo/by-chapter/ch17-multiple-representations.ts)
 
 ---
 
@@ -375,7 +375,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (list (summarize-legal issue) (summarize-support issue))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--18--Generic-Semantic-Operations.md) | ðŸŽ® [Demo](../demo/by-chapter/ch18-generic-semantic.ts)
+[Full Chapter](./USER-MANUAL--18--Generic-Semantic-Operations.md) | [Demo](../demo/by-chapter/ch18-generic-semantic.ts)
 
 ---
 
@@ -394,7 +394,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
   (list "Given this conversation, craft the next reply that remembers prior concerns: " history))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--19--Conversational-State-And-Memory.md) | ðŸŽ® [Demo](../demo/by-chapter/ch19-conversational-state.ts)
+[Full Chapter](./USER-MANUAL--19--Conversational-State-And-Memory.md) | [Demo](../demo/by-chapter/ch19-conversational-state.ts)
 
 ---
 
@@ -412,7 +412,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
   (interpret "bank" "The finance team asked the bank to extend credit."))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--20--The-Semantic-Environment-Model.md) | ðŸŽ® [Demo](../demo/by-chapter/ch20-semantic-environment.ts)
+[Full Chapter](./USER-MANUAL--20--The-Semantic-Environment-Model.md) | [Demo](../demo/by-chapter/ch20-semantic-environment.ts)
 
 ---
 
@@ -430,7 +430,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
   (list "Summarize these relations in one sentence, keeping causal tone: " relations))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--21--Mutable-Semantic-Structures.md) | ðŸŽ® [Demo](../demo/by-chapter/ch21-mutable-semantic.ts)
+[Full Chapter](./USER-MANUAL--21--Mutable-Semantic-Structures.md) | [Demo](../demo/by-chapter/ch21-mutable-semantic.ts)
 
 ---
 
@@ -456,7 +456,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (parallel-map classify tickets)
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--22--Concurrent-Inference.md) | ðŸŽ® [Demo](../demo/by-chapter/ch22-concurrent-inference.ts)
+[Full Chapter](./USER-MANUAL--22--Concurrent-Inference.md) | [Demo](../demo/by-chapter/ch22-concurrent-inference.ts)
 
 ---
 
@@ -479,7 +479,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (iterate 3 "Calmly communicate risk to non-technical stakeholders.")
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--23--Streams-Of-Inference.md) | ðŸŽ® [Demo](../demo/by-chapter/ch23-streams-of-inference.ts)
+[Full Chapter](./USER-MANUAL--23--Streams-Of-Inference.md) | [Demo](../demo/by-chapter/ch23-streams-of-inference.ts)
 
 ---
 
@@ -493,7 +493,7 @@ This reference has one section per chapter of the full manual. Each shows the ke
 (explain helper)
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--24--Metalinguistic-Abstraction-The-Oracle-In-The-Evaluator.md) | ðŸŽ® [Demo](../demo/by-chapter/ch24-metacircular.ts)
+[Full Chapter](./USER-MANUAL--24--Metalinguistic-Abstraction-The-Oracle-In-The-Evaluator.md) | [Demo](../demo/by-chapter/ch24-metacircular.ts)
 
 ---
 
@@ -518,7 +518,7 @@ The first `analyze` call runs the oracle; subsequent calls reuse the cached valu
   (analyze "Reusing the memoized tone analysis to avoid another call."))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--25--Lazy-Semantic-Evaluation.md) | ðŸŽ® [Demo](../demo/by-chapter/ch25-lazy-semantic.ts)
+[Full Chapter](./USER-MANUAL--25--Lazy-Semantic-Evaluation.md) | [Demo](../demo/by-chapter/ch25-lazy-semantic.ts)
 
 ---
 
@@ -541,7 +541,7 @@ The first `analyze` call runs the oracle; subsequent calls reuse the cached valu
     (list tone intent)))
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--26--The-Amb-Inference-Engine.md) | ðŸŽ® [Demo](../demo/by-chapter/ch26-amb-inference.ts)
+[Full Chapter](./USER-MANUAL--26--The-Amb-Inference-Engine.md) | [Demo](../demo/by-chapter/ch26-amb-inference.ts)
 
 ---
 
@@ -566,7 +566,7 @@ The first `analyze` call runs the oracle; subsequent calls reuse the cached valu
 (is-grandparent? "Alice" "Carol")
 ```
 
-ðŸ“˜ [Full Chapter](./USER-MANUAL--27--Logic-Programming-With-Semantic-Facts.md) | ðŸŽ® [Demo](../demo/by-chapter/ch27-logic-programming.ts)
+[Full Chapter](./USER-MANUAL--27--Logic-Programming-With-Semantic-Facts.md) | [Demo](../demo/by-chapter/ch27-logic-programming.ts)
 
 ---
 

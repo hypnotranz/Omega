@@ -311,4 +311,95 @@ describe("Oracle REPL Re-entry", () => {
     expect(result.tag).toBe("Num");
     expect((result as any).n).toBe(10); // (1+2) + (3+4) = 10
   });
+
+  it("R6: LLM can call code that calls another LLM (nested infer.op)", async () => {
+    // THIS IS THE CORE TEST - LLM-A triggers LLM-B through ReqEval
+    //
+    // Flow:
+    // 1. Code calls (effect infer.op "outer") → LLM-A starts
+    // 2. LLM-A issues ReqEval with code: (effect infer.op "inner")
+    // 3. Runtime evaluates that code, hits infer.op → LLM-B starts
+    // 4. LLM-B returns 100
+    // 5. LLM-A receives 100, adds 1, returns 101
+    //
+    // This proves: LLM can spawn sub-LLM calls through the interpreter
+
+    class NestedLLMAdapter implements OracleAdapter {
+      public sessionCount = 0;
+      public payloads: string[] = [];
+
+      startSession(init: OracleInit): OracleSession {
+        const self = this;
+        self.sessionCount++;
+        const sessionNum = self.sessionCount;
+
+        // Extract payload from init
+        const payload = init.tag === "Infer" && init.payload?.tag === "Str"
+          ? init.payload.s
+          : "unknown";
+        self.payloads.push(payload);
+
+        return (async function* (): OracleSession {
+          if (payload === "outer") {
+            // OUTER LLM: Issue ReqEval with code that calls ANOTHER LLM
+            const resp: OracleResp = yield {
+              tag: "ReqEval",
+              qexpr: `(effect infer.op "inner")`,  // ← This triggers LLM-B!
+              envRef: init.envRef
+            };
+
+            // We should get back the result from LLM-B (which returns 100)
+            if (resp.tag !== "RespVal") {
+              throw new Error(`Expected RespVal from nested infer, got ${resp.tag}`);
+            }
+
+            const innerResult = (resp.value as any).n ?? 0;
+
+            // Add 1 to prove we processed the nested result
+            const meaning: Meaning = {
+              tag: "Meaning",
+              denotation: { tag: "Num", n: innerResult + 1 },
+              confidence: 1.0,
+            };
+            yield { tag: "ReqReturn", result: meaning };
+            return meaning;
+
+          } else if (payload === "inner") {
+            // INNER LLM: Just return 100
+            const meaning: Meaning = {
+              tag: "Meaning",
+              denotation: { tag: "Num", n: 100 },
+              confidence: 1.0,
+            };
+            yield { tag: "ReqReturn", result: meaning };
+            return meaning;
+
+          } else {
+            // Fallback
+            const meaning: Meaning = { tag: "Meaning", denotation: { tag: "Num", n: -1 }, confidence: 0 };
+            yield { tag: "ReqReturn", result: meaning };
+            return meaning;
+          }
+        })();
+      }
+    }
+
+    const adapter = new NestedLLMAdapter();
+    const snapshots = new SnapshotRepo();
+    const receipts = new InMemoryReceiptStore("off");
+    const runtime = new RuntimeImpl(adapter, snapshots, receipts, mockCommit);
+
+    const result = await runToCompletion(runtime, initialState(`
+      (effect infer.op "outer")
+    `), 50000);
+
+    // Verify BOTH LLMs were called
+    expect(adapter.sessionCount).toBe(2);
+    expect(adapter.payloads).toContain("outer");
+    expect(adapter.payloads).toContain("inner");
+
+    // Verify the result: inner returned 100, outer added 1 = 101
+    expect(result.tag).toBe("Num");
+    expect((result as any).n).toBe(101);
+  });
 });

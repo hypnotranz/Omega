@@ -65,3 +65,17 @@ features:
       - repair-until-valid, fixpoint primitives
       - fact-store, budget-split primitives
       - All tests pass (npx vitest run test/solver/)
+
+  # Phase E: Documentation & Demos
+  - id: job-016-quick-ref
+    title: "Quick Reference Manual & Demo Suite"
+    type: documentation
+    # No dependencies - can run standalone
+    requirements: "CLAUDE-JOBS/016-QUICK-REFERENCE-AND-DEMOS.md"
+    output: "docs/USER-MANUAL--00--Quick-Reference.md"
+    acceptance_criteria:
+      - Create Quick Reference with 27 sections (one per chapter)
+      - Create demo/by-chapter/ directory with 27 runnable demos
+      - Find existing tests first, update them with doc references
+      - All demos use semantic examples (not trivial values)
+      - All cross-references resolve correctly

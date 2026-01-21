@@ -103,15 +103,25 @@ describe("call/cc", () => {
     expect(result).toMatchObject({ tag: "Num", n: 5 });
   });
 
+  // AC-2: Demonstrates multi-shot continuations - the same continuation
+  // can be invoked multiple times. Each invocation jumps back to where
+  // call/cc was captured. We use a counter to control re-entry and
+  // eventually terminate.
   it("AC-2: saved continuation can be invoked multiple times", async () => {
     const result = await evalOmega(`
       (begin
         (define saved-k #f)
-        (define first (+ 1 (call/cc (lambda (k) (set! saved-k k) 10))))
-        (define second (saved-k 20))
-        second)
+        (define counter 0)
+        (define result (+ 1 (call/cc (lambda (k) (set! saved-k k) 10))))
+        ;; First pass: result=11, counter=1, re-invoke with 20
+        ;; Second pass: result=21, counter=2, return result
+        (set! counter (+ counter 1))
+        (if (< counter 2)
+            (saved-k 20)
+            result))
     `);
     expectNum(result);
+    // After two invocations: 1+20 = 21
     expect(result).toMatchObject({ tag: "Num", n: 21 });
   });
 });

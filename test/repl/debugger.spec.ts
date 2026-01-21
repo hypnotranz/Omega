@@ -1,3 +1,13 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Debugger Tests
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Quick Reference: docs/USER-MANUAL--00--Quick-Reference.md#8-the-debugger
+ * Full Chapter:    docs/USER-MANUAL--08--The-Debugger.md
+ * Demo:            demo/by-chapter/ch08-debugger.ts
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 // test/repl/debugger.spec.ts
 // Tests for REPL debugger functionality
 

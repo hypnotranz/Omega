@@ -208,6 +208,58 @@ function parseTextProtocol(text: string): { type: "eval"; expr: string } | { typ
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// STREAMING HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+type OllamaStreamChunk = {
+  model: string;
+  message: {
+    role: string;
+    content: string;
+    tool_calls?: OllamaToolCall[];
+  };
+  done: boolean;
+};
+
+/**
+ * Parse NDJSON stream from Ollama API
+ */
+async function* parseOllamaStream(response: Response): AsyncGenerator<OllamaStreamChunk> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";  // Keep incomplete line in buffer
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      try {
+        yield JSON.parse(trimmed) as OllamaStreamChunk;
+      } catch {
+        // Skip malformed JSON
+      }
+    }
+  }
+
+  // Process any remaining buffer
+  if (buffer.trim()) {
+    try {
+      yield JSON.parse(buffer.trim()) as OllamaStreamChunk;
+    } catch {
+      // Skip malformed JSON
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // OLLAMA ADAPTER
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -217,6 +269,7 @@ class OllamaOracleAdapter implements OracleAdapter {
   private useTools: boolean;
   private maxTokens: number;
   private temperature: number;
+  private streaming: boolean;
 
   constructor(config: BasePluginConfig) {
     this.model = config.model || "llama3.1";
@@ -224,17 +277,255 @@ class OllamaOracleAdapter implements OracleAdapter {
     this.useTools = modelSupportsTools(this.model);
     this.maxTokens = config.maxTokens || 2048;
     this.temperature = config.temperature || 0.7;
+    this.streaming = config.streaming || false;
   }
 
   startSession(init: OracleInit): OracleSession {
-    if (this.useTools) {
-      return this.startToolSession(init);
+    if (this.streaming) {
+      // Streaming mode
+      if (this.useTools) {
+        return this.startStreamingToolSession(init);
+      } else {
+        return this.startStreamingTextSession(init);
+      }
     } else {
-      return this.startTextSession(init);
+      // Blocking mode
+      if (this.useTools) {
+        return this.startToolSession(init);
+      } else {
+        return this.startTextSession(init);
+      }
     }
   }
 
-  // Tool-calling session (for capable models)
+  // ─────────────────────────────────────────────────────────────────────────
+  // STREAMING TOOL SESSION
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private startStreamingToolSession(init: OracleInit): OracleSession {
+    const adapter = this;
+    const envRef = init.envRef;
+
+    return (async function* (): OracleSession {
+      const userContent = init.tag === "Infer"
+        ? `Compute a result for: ${valToString(init.payload)}\n\nUse omega_eval to run Lisp code, then call omega_return with your answer.`
+        : `Apply ${valToString(init.proc)} to ${init.args.map(valToString).join(" ")}`;
+
+      const messages: OllamaMessage[] = [
+        { role: "system", content: "You are an Oracle for a Lisp runtime. Use the tools to evaluate expressions and return results." },
+        { role: "user", content: userContent },
+      ];
+
+      let turnCount = 0;
+      const maxTurns = 15;
+
+      while (turnCount < maxTurns) {
+        turnCount++;
+
+        const response = await fetch(`${adapter.baseUrl}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: adapter.model,
+            messages,
+            stream: true,  // ← STREAMING ENABLED
+            tools: ORACLE_TOOLS,
+            options: {
+              temperature: adapter.temperature,
+              num_predict: adapter.maxTokens,
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          const err = await response.text();
+          return meaning({
+            denotation: { tag: "Unit" },
+            confidence: 0,
+            trace: { tag: "Str", s: `Ollama API error: ${err}` },
+          });
+        }
+
+        // Accumulate streaming chunks
+        let contentBuffer = "";
+        let toolCalls: OllamaToolCall[] = [];
+
+        for await (const chunk of parseOllamaStream(response)) {
+          if (chunk.message.content) {
+            contentBuffer += chunk.message.content;
+          }
+          if (chunk.message.tool_calls) {
+            toolCalls = chunk.message.tool_calls;  // Ollama sends complete tool calls
+          }
+        }
+
+        // Build assistant message
+        const msg: OllamaMessage = {
+          role: "assistant",
+          content: contentBuffer,
+          tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+        };
+        messages.push(msg);
+
+        if (toolCalls.length === 0) {
+          return meaning({
+            denotation: { tag: "Str", s: contentBuffer || "" },
+            confidence: 0.5,
+            trace: { tag: "Str", s: `ollama:${adapter.model}:streaming:text-only` },
+          });
+        }
+
+        for (const toolCall of toolCalls) {
+          const { name, arguments: args } = toolCall.function;
+
+          if (name === "omega_return") {
+            return meaning({
+              denotation: { tag: "Str", s: String(args.value || "") },
+              confidence: parseFloat(String(args.confidence || "0.7")) || 0.7,
+              trace: { tag: "Str", s: `ollama:${adapter.model}:streaming` },
+            });
+          }
+
+          if (name === "omega_eval") {
+            const req: OracleReq = {
+              tag: "ReqEval",
+              qexpr: String(args.expr) as unknown as QExpr,
+              envRef,
+            };
+
+            const resp: OracleResp = yield req;
+
+            let result: string;
+            if (resp.tag === "RespVal") {
+              result = JSON.stringify(valToJSON(resp.value));
+            } else if (resp.tag === "RespError") {
+              result = `Error: ${resp.message}`;
+            } else {
+              result = JSON.stringify(resp);
+            }
+
+            messages.push({ role: "tool", content: result });
+          }
+        }
+      }
+
+      return meaning({
+        denotation: { tag: "Unit" },
+        confidence: 0,
+        trace: { tag: "Str", s: "max turns exceeded (streaming)" },
+      });
+    })();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // STREAMING TEXT SESSION (for models without tool support)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private startStreamingTextSession(init: OracleInit): OracleSession {
+    const adapter = this;
+    const envRef = init.envRef;
+
+    return (async function* (): OracleSession {
+      const userContent = init.tag === "Infer"
+        ? `Compute a result for: ${valToString(init.payload)}`
+        : `Apply ${valToString(init.proc)} to ${init.args.map(valToString).join(" ")}`;
+
+      const messages: OllamaMessage[] = [
+        { role: "system", content: TEXT_PROTOCOL_SYSTEM },
+        { role: "user", content: userContent },
+      ];
+
+      let turnCount = 0;
+      const maxTurns = 15;
+
+      while (turnCount < maxTurns) {
+        turnCount++;
+
+        const response = await fetch(`${adapter.baseUrl}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: adapter.model,
+            messages,
+            stream: true,  // ← STREAMING ENABLED
+            options: {
+              temperature: adapter.temperature,
+              num_predict: adapter.maxTokens,
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          const err = await response.text();
+          return meaning({
+            denotation: { tag: "Unit" },
+            confidence: 0,
+            trace: { tag: "Str", s: `Ollama API error: ${err}` },
+          });
+        }
+
+        // Accumulate streaming chunks
+        let contentBuffer = "";
+        for await (const chunk of parseOllamaStream(response)) {
+          if (chunk.message.content) {
+            contentBuffer += chunk.message.content;
+          }
+        }
+
+        messages.push({ role: "assistant", content: contentBuffer });
+
+        const parsed = parseTextProtocol(contentBuffer);
+
+        if (!parsed) {
+          return meaning({
+            denotation: { tag: "Str", s: contentBuffer },
+            confidence: 0.3,
+            trace: { tag: "Str", s: `ollama:${adapter.model}:streaming:raw-text` },
+          });
+        }
+
+        if (parsed.type === "return") {
+          return meaning({
+            denotation: { tag: "Str", s: parsed.value },
+            confidence: parsed.confidence,
+            trace: { tag: "Str", s: `ollama:${adapter.model}:streaming:text-protocol` },
+          });
+        }
+
+        if (parsed.type === "eval") {
+          const req: OracleReq = {
+            tag: "ReqEval",
+            qexpr: parsed.expr as unknown as QExpr,
+            envRef,
+          };
+
+          const resp: OracleResp = yield req;
+
+          let result: string;
+          if (resp.tag === "RespVal") {
+            result = JSON.stringify(valToJSON(resp.value));
+          } else if (resp.tag === "RespError") {
+            result = `Error: ${resp.message}`;
+          } else {
+            result = JSON.stringify(resp);
+          }
+
+          messages.push({ role: "user", content: `[Eval result: ${result}]` });
+        }
+      }
+
+      return meaning({
+        denotation: { tag: "Unit" },
+        confidence: 0,
+        trace: { tag: "Str", s: "max turns exceeded (streaming)" },
+      });
+    })();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BLOCKING TOOL SESSION (original implementation)
+  // ─────────────────────────────────────────────────────────────────────────
+
   private startToolSession(init: OracleInit): OracleSession {
     const adapter = this;
     const envRef = init.envRef;
@@ -262,7 +553,6 @@ class OllamaOracleAdapter implements OracleAdapter {
         const toolCalls = msg.tool_calls || [];
 
         if (toolCalls.length === 0) {
-          // No tool calls - parse content as answer
           return meaning({
             denotation: { tag: "Str", s: msg.content || "" },
             confidence: 0.5,
@@ -299,10 +589,7 @@ class OllamaOracleAdapter implements OracleAdapter {
               result = JSON.stringify(resp);
             }
 
-            messages.push({
-              role: "tool",
-              content: result,
-            });
+            messages.push({ role: "tool", content: result });
           }
         }
       }
@@ -315,7 +602,10 @@ class OllamaOracleAdapter implements OracleAdapter {
     })();
   }
 
-  // Text-based session (for models without tool support)
+  // ─────────────────────────────────────────────────────────────────────────
+  // BLOCKING TEXT SESSION (for models without tool support)
+  // ─────────────────────────────────────────────────────────────────────────
+
   private startTextSession(init: OracleInit): OracleSession {
     const adapter = this;
     const envRef = init.envRef;
@@ -343,7 +633,6 @@ class OllamaOracleAdapter implements OracleAdapter {
         const parsed = parseTextProtocol(content);
 
         if (!parsed) {
-          // No protocol command - treat as final answer
           return meaning({
             denotation: { tag: "Str", s: content },
             confidence: 0.3,
@@ -377,10 +666,7 @@ class OllamaOracleAdapter implements OracleAdapter {
             result = JSON.stringify(resp);
           }
 
-          messages.push({
-            role: "user",
-            content: `[Eval result: ${result}]`,
-          });
+          messages.push({ role: "user", content: `[Eval result: ${result}]` });
         }
       }
 
@@ -391,6 +677,10 @@ class OllamaOracleAdapter implements OracleAdapter {
       });
     })();
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BLOCKING API CALL
+  // ─────────────────────────────────────────────────────────────────────────
 
   private async callAPI(messages: OllamaMessage[], useTools: boolean): Promise<OllamaResponse> {
     const request: OllamaRequest = {

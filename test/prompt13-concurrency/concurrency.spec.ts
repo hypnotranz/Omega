@@ -1,3 +1,13 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Concurrent Inference Tests
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Quick Reference: docs/USER-MANUAL--00--Quick-Reference.md#22-concurrent-inference
+ * Full Chapter:    docs/USER-MANUAL--22--Concurrent-Inference.md
+ * Demo:            demo/by-chapter/ch22-concurrent-inference.ts
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 // test/prompt13-concurrency/concurrency.spec.ts
 // SOURCE: ARCHITECTURE/32-LANGUAGE-OFFICIAL-13-IMPLEMENTATION-16.md
 // Tests for Prompt 13: SICP-style concurrency

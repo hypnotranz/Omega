@@ -5,6 +5,12 @@
 import type { Val } from "../eval/values";
 import type { Expr } from "../ast";
 import type { Hash } from "../artifacts/hash";
+import type { FlowIR } from "../../frameir/flow";
+import type { ValueIR } from "../../frameir/value";
+import type { PromptIR } from "../../frameir/prompt";
+import type { IRBundle, FnDefIR } from "../../frameir/bundle";
+import type { Span } from "../../frameir/meta";
+import type { Diagnostic } from "../../outcome/diagnostic";
 
 // ─────────────────────────────────────────────────────────────────
 // Source Location and Source Maps
@@ -47,6 +53,15 @@ export type SourceMap = {
   entries: SourceMapEntry[];
   /** Original source text (optional, for display) */
   originalSource?: string;
+  /** Optional V2 fields for FlowIR pipeline */
+  version?: 3;
+  file?: string;
+  sourceRoot?: string;
+  sources?: string[];
+  names?: string[];
+  mappings?: string;
+  /** Map of IR node hash to source span */
+  irToSource?: Map<string, Span>;
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -483,3 +498,182 @@ export const DEFAULT_VM_CONFIG: VMConfig = {
   stepping: false,
   breakpoints: new Set(),
 };
+
+// ============================================================
+// FlowIR compilation pipeline (Job 014)
+// ============================================================
+
+export type FormTag =
+  | "Atom"
+  | "Symbol"
+  | "Keyword"
+  | "Number"
+  | "String"
+  | "List"
+  | "Vector"
+  | "Map";
+
+export interface FormMeta {
+  span: Span;
+  macroExpanded?: boolean;
+  originalForm?: Form;
+}
+
+export interface Form {
+  tag: FormTag;
+  meta: FormMeta;
+  value: unknown;
+  children?: Form[];
+}
+
+export interface ReadResult {
+  ok: boolean;
+  forms: Form[];
+  diagnostics: Diagnostic[];
+}
+
+export interface MacroEnv {
+  macros: Map<string, MacroDefinition>;
+  gensymCounter: number;
+  hygieneContext: HygieneContext;
+}
+
+export interface MacroDefinition {
+  name: string;
+  transformer?: (args: Form[], env: MacroEnv) => Form;
+  patterns?: PatternRule[];
+}
+
+export interface PatternRule {
+  pattern: Form;
+  template: Form;
+  guards?: (bindings: Map<string, Form>) => boolean;
+}
+
+export interface HygieneContext {
+  scope: number;
+  marks: Set<number>;
+  renames: Map<string, string>;
+}
+
+export interface ExpandResult {
+  ok: boolean;
+  form: Form;
+  diagnostics: Diagnostic[];
+  macrosUsed: string[];
+}
+
+export type CoreFormTag =
+  | "quote"
+  | "if"
+  | "lambda"
+  | "let"
+  | "letrec"
+  | "begin"
+  | "set!"
+  | "define"
+  | "pure"
+  | "bind"
+  | "fail"
+  | "catch"
+  | "with-budget"
+  | "with-timeout"
+  | "infer"
+  | "tool-call"
+  | "validate"
+  | "commit"
+  | "emit"
+  | "observe"
+  | "all"
+  | "race"
+  | "any"
+  | "sequence"
+  | "branch"
+  | "loop";
+
+export interface ValueLiteral {
+  tag: "literal";
+  meta: FormMeta;
+  value: unknown;
+}
+
+export interface CoreForm {
+  tag: CoreFormTag;
+  meta: FormMeta;
+  args: (CoreForm | ValueLiteral)[];
+}
+
+export interface DesugarResult {
+  ok: boolean;
+  coreForm: CoreForm;
+  diagnostics: Diagnostic[];
+}
+
+export interface LowerEnv {
+  fnDefs: Map<string, FnDefIR>;
+  schemas: Map<string, unknown>;
+  toolContracts: Map<string, unknown>;
+  globals: Map<string, ValueIR>;
+  currentFn?: string;
+  capturedVars: Set<string>;
+}
+
+export interface LowerResult {
+  ok: boolean;
+  ir: FlowIR | ValueIR | PromptIR;
+  fnDefs: FnDefIR[];
+  diagnostics: Diagnostic[];
+}
+
+export interface NormalizeConfigFlow {
+  flattenSequences: boolean;
+  flattenPrompts: boolean;
+  insertImplicitBudgets: boolean;
+  insertImplicitTimeouts: boolean;
+  defaultBudget?: {
+    llmCalls: number;
+    tokens: number;
+    timeMs: number;
+  };
+  defaultTimeoutMs?: number;
+}
+
+export interface RewriteRecord {
+  kind: string;
+  location?: Span;
+  before: string;
+  after: string;
+}
+
+export interface NormalizeResultFlow {
+  ok: boolean;
+  ir: FlowIR;
+  rewrites: RewriteRecord[];
+  diagnostics: Diagnostic[];
+}
+
+export interface FlowCompileConfig {
+  normalize: NormalizeConfigFlow;
+  lint: boolean;
+  sourceMap: boolean;
+  debug: boolean;
+}
+
+export interface FlowCompileResult {
+  ok: boolean;
+  bundle?: IRBundle;
+  sourceMap?: SourceMap;
+  diagnostics: Diagnostic[];
+  phases: {
+    read?: ReadResult;
+    expand?: ExpandResult;
+    desugar?: DesugarResult;
+    lower?: LowerResult;
+    normalize?: NormalizeResultFlow;
+  };
+}
+
+// Aliases for convenience with Flow pipeline nomenclature
+export type NormalizeConfig = NormalizeConfigFlow;
+export type CompileConfig = FlowCompileConfig;
+export type CompileResult = FlowCompileResult;

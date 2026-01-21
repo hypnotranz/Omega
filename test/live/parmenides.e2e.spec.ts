@@ -1,8 +1,11 @@
-// test/oracle/parmenides.e2e.spec.ts
+// test/live/parmenides.e2e.spec.ts
+// LIVE TESTS - Makes real API calls to LLM providers
 // E2E Test: Ask each LLM for Parmenides' academic lineage
 //
 // This test demonstrates the plugin system by querying multiple LLMs
 // with the same philosophical question and comparing their responses.
+//
+// Run with: RUN_LIVE_TESTS=true npx vitest run test/live/
 
 import { describe, it, expect, beforeAll } from "vitest";
 import {
@@ -20,6 +23,8 @@ import type { Val } from "../../src/core/eval/values";
 // ═══════════════════════════════════════════════════════════════════════════
 // TEST CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════════════
+
+const RUN_LIVE_TESTS = process.env.RUN_LIVE_TESTS === "true";
 
 const PARMENIDES_QUERY = `Who were the academic students (philosophical descendants) of Parmenides of Elea?
 List the direct students and their students, going as far as you know.
@@ -145,7 +150,7 @@ function isModelAvailable(testModel: typeof TEST_MODELS[0]): boolean {
 // E2E TESTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("Parmenides Family Tree E2E", () => {
+describe.skipIf(!RUN_LIVE_TESTS)("Parmenides Family Tree E2E", () => {
   // Test each model individually
   for (const testModel of TEST_MODELS) {
     describe(`${testModel.plugin}/${testModel.model}`, () => {
@@ -188,7 +193,7 @@ describe("Parmenides Family Tree E2E", () => {
 
   // Test model selection from Lisp
   describe("Model selection via payload", () => {
-    const hasAnyKey = !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
+    const hasAnyKey = RUN_LIVE_TESTS && !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
 
     it.skipIf(!hasAnyKey)("routes to specified model via withModel helper", async () => {
       const selector = createModelSelector();

@@ -147,3 +147,11 @@ export {
   metamorphicTest,
   runDifferentialTestSuite,
 } from "./differential";
+
+// FlowIR pipeline (Job 014)
+export { readForms } from "./reader";
+export { createMacroEnv, defineMacro, expandModule, gensym } from "./expander";
+export { desugarForm } from "./desugar";
+export { createLowerEnv, lowerCoreForm } from "./lower";
+export { normalizeFlowIR } from "./normalize";
+export { createFlowPipeline, defaultFlowCompileConfig } from "./pipeline";

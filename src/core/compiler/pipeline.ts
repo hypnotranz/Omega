@@ -461,3 +461,7 @@ export function disassembleFromDigest(
   const { disassemble } = require("./bytecode");
   return disassemble(fn);
 }
+
+// FlowIR compilation pipeline (Job 014)
+export { createFlowPipeline } from "./flowPipeline";
+export { defaultFlowCompileConfig } from "./pipelineDefaults";

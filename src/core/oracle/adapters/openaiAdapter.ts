@@ -180,8 +180,223 @@ function parseObserveSpec(what: string): ObserveSpec {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// STREAMING HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+type StreamingToolCall = {
+  id: string;
+  name: string;
+  arguments: string;
+};
+
+/**
+ * Parse SSE stream chunks from OpenAI streaming response
+ */
+async function* parseSSEStream(response: Response): AsyncGenerator<any> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";  // Keep incomplete line in buffer
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith("data: ")) continue;
+      const data = trimmed.slice(6);
+      if (data === "[DONE]") return;
+
+      try {
+        yield JSON.parse(data);
+      } catch {
+        // Skip malformed JSON
+      }
+    }
+  }
+}
+
+/**
+ * Accumulate streaming chunks into complete tool calls
+ */
+function accumulateStreamChunk(
+  toolCalls: Map<number, StreamingToolCall>,
+  contentBuffer: { content: string },
+  chunk: any
+): void {
+  const delta = chunk.choices?.[0]?.delta;
+  if (!delta) return;
+
+  // Accumulate content
+  if (delta.content) {
+    contentBuffer.content += delta.content;
+  }
+
+  // Accumulate tool calls
+  if (delta.tool_calls) {
+    for (const tc of delta.tool_calls) {
+      const idx = tc.index;
+      const existing = toolCalls.get(idx) ?? { id: "", name: "", arguments: "" };
+
+      if (tc.id) existing.id = tc.id;
+      if (tc.function?.name) existing.name = tc.function.name;
+      if (tc.function?.arguments) existing.arguments += tc.function.arguments;
+
+      toolCalls.set(idx, existing);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOOL CALL PROCESSING (shared between streaming and blocking)
+// ═══════════════════════════════════════════════════════════════════════════
+
+type ToolCallResult =
+  | { done: false; toolResults: any[] }
+  | { done: true; meaning: Meaning };
+
+/**
+ * Process tool calls and yield to runtime - used by both modes
+ */
+async function* processToolCalls(
+  toolCalls: { id: string; name: string; arguments: string }[],
+  init: OracleInit,
+  model: string,
+  turn: number
+): AsyncGenerator<OracleReq, ToolCallResult, OracleResp> {
+  const toolResults: any[] = [];
+
+  for (const tc of toolCalls) {
+    const toolName = tc.name;
+    let toolArgs: any;
+    try {
+      toolArgs = JSON.parse(tc.arguments || "{}");
+    } catch {
+      toolArgs = {};
+    }
+
+    let req: OracleReq;
+    let resp: OracleResp;
+    let resultContent: string;
+
+    switch (toolName) {
+      case "eval":
+        req = {
+          tag: "ReqEval",
+          qexpr: toolArgs.expr as string as unknown as QExpr,
+          envRef: init.envRef,
+        };
+        resp = yield req;
+        if (resp.tag === "RespVal") {
+          resultContent = formatVal(resp.value);
+        } else if (resp.tag === "RespError") {
+          resultContent = `Error: ${resp.message}`;
+        } else {
+          resultContent = JSON.stringify(resp);
+        }
+        break;
+
+      case "apply":
+        const fnVal = parseValLiteral(toolArgs.fn);
+        const argsVals = (toolArgs.args as string[]).map(parseValLiteral);
+        req = {
+          tag: "ReqApply",
+          fn: fnVal,
+          args: argsVals,
+          envRef: init.envRef,
+        };
+        resp = yield req;
+        if (resp.tag === "RespVal") {
+          resultContent = formatVal(resp.value);
+        } else if (resp.tag === "RespError") {
+          resultContent = `Error: ${resp.message}`;
+        } else {
+          resultContent = JSON.stringify(resp);
+        }
+        break;
+
+      case "observe":
+        req = {
+          tag: "ReqObserve",
+          what: parseObserveSpec(toolArgs.what),
+          stateRef: init.stateRef,
+        };
+        resp = yield req;
+        if (resp.tag === "RespObs") {
+          resultContent = JSON.stringify(resp.data, null, 2);
+        } else if (resp.tag === "RespError") {
+          resultContent = `Error: ${resp.message}`;
+        } else {
+          resultContent = JSON.stringify(resp);
+        }
+        break;
+
+      case "match":
+        req = {
+          tag: "ReqMatch",
+          qexpr: toolArgs.expr as string as unknown as QExpr,
+          pattern: toolArgs.pattern as string as unknown as QExpr,
+          envRef: init.envRef,
+        };
+        resp = yield req;
+        resultContent = JSON.stringify(resp);
+        break;
+
+      case "assert":
+        req = {
+          tag: "ReqAssert",
+          predicate: toolArgs.predicate as string as unknown as QExpr,
+          msg: toolArgs.msg,
+          envRef: init.envRef,
+        };
+        resp = yield req;
+        if (resp.tag === "RespAck") {
+          resultContent = "Assertion passed";
+        } else if (resp.tag === "RespError") {
+          resultContent = `Assertion failed: ${resp.message}`;
+        } else {
+          resultContent = JSON.stringify(resp);
+        }
+        break;
+
+      case "return":
+        const retVal = parseValLiteral(toolArgs.value);
+        const confidence = toolArgs.confidence ?? 0.9;
+        return {
+          done: true,
+          meaning: meaning({
+            denotation: retVal,
+            confidence,
+            trace: { tag: "Str", s: `adapter=openai model=${model} turns=${turn + 1}` },
+          }),
+        };
+
+      default:
+        resultContent = `Unknown tool: ${toolName}`;
+    }
+
+    toolResults.push({
+      role: "tool",
+      tool_call_id: tc.id,
+      content: resultContent!,
+    });
+  }
+
+  return { done: false, toolResults };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OPENAI ADAPTER
+// ═══════════════════════════════════════════════════════════════════════════
+
 /**
  * Real OpenAI Oracle adapter with tool calling
+ * Supports both streaming and blocking modes via config.streaming
  */
 export class OpenAIAdapter implements OracleAdapterWithCaps {
   constructor(private config: LLMConfig) {}
@@ -198,6 +413,18 @@ export class OpenAIAdapter implements OracleAdapterWithCaps {
   }
 
   startSession(init: OracleInit): OracleSession {
+    if (this.config.streaming) {
+      return this.startStreamingSession(init);
+    } else {
+      return this.startBlockingSession(init);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // STREAMING MODE - accumulates tool calls from SSE chunks
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private startStreamingSession(init: OracleInit): OracleSession {
     const config = this.config;
     const tools = toOpenAITools();
 
@@ -217,16 +444,14 @@ You have these tools:
 - eval(expr): Run Lisp code only if needed`;
 
       const userPrompt = init.tag === "Infer"
-        ? formatVal(init.payload)  // Just send the payload directly as the question
+        ? formatVal(init.payload)
         : `Apply procedure ${formatVal(init.proc)} to args: ${init.args.map(formatVal).join(", ")}`;
 
-      // Build conversation history
       const messages: any[] = [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ];
 
-      // Call OpenAI API
       const apiKey = config.apiKey ?? process.env.OPENAI_API_KEY;
       if (!apiKey) {
         return meaning({
@@ -238,10 +463,10 @@ You have these tools:
 
       const baseUrl = config.baseUrl ?? "https://api.openai.com/v1";
       const model = config.model ?? "gpt-4o";
-      const maxTurns = 20;  // Prevent infinite loops
+      const maxTurns = 20;
 
       for (let turn = 0; turn < maxTurns; turn++) {
-        // Call OpenAI
+        // Call OpenAI with streaming enabled
         const response = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
           headers: {
@@ -255,6 +480,148 @@ You have these tools:
             tool_choice: "auto",
             max_tokens: config.maxTokens ?? 4096,
             temperature: config.temperature ?? 0.7,
+            stream: true,  // ← STREAMING ENABLED
+          }),
+        });
+
+        if (!response.ok) {
+          const err = await response.text();
+          return meaning({
+            denotation: { tag: "Unit" },
+            confidence: 0,
+            trace: { tag: "Str", s: `OpenAI API error: ${err}` },
+          });
+        }
+
+        // Accumulate streaming chunks
+        const toolCalls = new Map<number, StreamingToolCall>();
+        const contentBuffer = { content: "" };
+
+        for await (const chunk of parseSSEStream(response)) {
+          accumulateStreamChunk(toolCalls, contentBuffer, chunk);
+        }
+
+        // Convert accumulated tool calls to array
+        const completedToolCalls = Array.from(toolCalls.values()).filter(tc => tc.name);
+
+        if (completedToolCalls.length === 0) {
+          // No tool calls - check if we have content
+          if (contentBuffer.content) {
+            return meaning({
+              denotation: { tag: "Str", s: contentBuffer.content },
+              confidence: 0.5,
+              trace: { tag: "Str", s: `adapter=openai model=${model} streaming=true (text response)` },
+            });
+          }
+          return meaning({
+            denotation: { tag: "Unit" },
+            confidence: 0,
+            trace: { tag: "Str", s: "Empty streaming response from OpenAI" },
+          });
+        }
+
+        // Build assistant message for history
+        const assistantMsg: any = {
+          role: "assistant",
+          content: contentBuffer.content || null,
+          tool_calls: completedToolCalls.map((tc, idx) => ({
+            id: tc.id,
+            type: "function",
+            function: { name: tc.name, arguments: tc.arguments },
+          })),
+        };
+        messages.push(assistantMsg);
+
+        // Process tool calls using shared logic
+        const processor = processToolCalls(completedToolCalls, init, model, turn);
+        let procResp: OracleResp = { tag: "RespAck" };
+
+        while (true) {
+          const step = await processor.next(procResp);
+          if (step.done) {
+            const result = step.value;
+            if (result.done === true) {
+              return result.meaning;
+            } else {
+              // Add tool results to messages and continue
+              messages.push(...result.toolResults);
+              break;
+            }
+          }
+          // Yield request to runtime
+          procResp = yield step.value as OracleReq;
+        }
+      }
+
+      return meaning({
+        denotation: { tag: "Unit" },
+        confidence: 0,
+        trace: { tag: "Str", s: `Max turns (${maxTurns}) exceeded (streaming)` },
+      });
+    })();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BLOCKING MODE - original implementation (waits for full response)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private startBlockingSession(init: OracleInit): OracleSession {
+    const config = this.config;
+    const tools = toOpenAITools();
+
+    return (async function* (): OracleSession {
+      const systemPrompt = config.systemPrompt ?? `You are an Oracle that answers questions using tool calls.
+
+CRITICAL: You MUST use the 'return' tool to provide your answer. Do NOT write text answers directly.
+
+For simple questions (yes/no, factual answers):
+- Call the 'return' tool immediately with your answer
+
+For computation requiring Lisp:
+- Use 'eval' tool first, then 'return' tool with the result
+
+You have these tools:
+- return(value): Provide your final answer (REQUIRED for all responses)
+- eval(expr): Run Lisp code only if needed`;
+
+      const userPrompt = init.tag === "Infer"
+        ? formatVal(init.payload)
+        : `Apply procedure ${formatVal(init.proc)} to args: ${init.args.map(formatVal).join(", ")}`;
+
+      const messages: any[] = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ];
+
+      const apiKey = config.apiKey ?? process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        return meaning({
+          denotation: { tag: "Unit" },
+          confidence: 0,
+          trace: { tag: "Str", s: "error: OPENAI_API_KEY not set" },
+        });
+      }
+
+      const baseUrl = config.baseUrl ?? "https://api.openai.com/v1";
+      const model = config.model ?? "gpt-4o";
+      const maxTurns = 20;
+
+      for (let turn = 0; turn < maxTurns; turn++) {
+        // Call OpenAI (blocking)
+        const response = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            tools,
+            tool_choice: "auto",
+            max_tokens: config.maxTokens ?? 4096,
+            temperature: config.temperature ?? 0.7,
+            // stream: false (default)
           }),
         });
 
@@ -279,22 +646,17 @@ You have these tools:
           });
         }
 
-        // Add assistant message to history
         messages.push(assistantMsg);
 
-        // Check for tool calls
         const toolCalls = assistantMsg.tool_calls;
         if (!toolCalls || toolCalls.length === 0) {
-          // No tool calls - check if we have content
           if (assistantMsg.content) {
-            // LLM gave text answer without using return tool
             return meaning({
               denotation: { tag: "Str", s: assistantMsg.content },
               confidence: 0.5,
               trace: { tag: "Str", s: `adapter=openai model=${model} (text response, no return tool)` },
             });
           }
-          // Empty response
           return meaning({
             denotation: { tag: "Unit" },
             confidence: 0,
@@ -302,124 +664,31 @@ You have these tools:
           });
         }
 
-        // Process each tool call
-        const toolResults: any[] = [];
+        // Convert to common format and process
+        const normalizedCalls = toolCalls.map((tc: any) => ({
+          id: tc.id,
+          name: tc.function?.name || "",
+          arguments: tc.function?.arguments || "{}",
+        }));
 
-        for (const tc of toolCalls) {
-          const toolName = tc.function?.name;
-          const toolArgs = JSON.parse(tc.function?.arguments || "{}");
+        const processor = processToolCalls(normalizedCalls, init, model, turn);
+        let procResp: OracleResp = { tag: "RespAck" };
 
-          let req: OracleReq;
-          let resp: OracleResp;
-          let resultContent: string;
-
-          switch (toolName) {
-            case "eval":
-              req = {
-                tag: "ReqEval",
-                qexpr: toolArgs.expr as string as unknown as QExpr,
-                envRef: init.envRef,
-              };
-              resp = yield req;
-              if (resp.tag === "RespVal") {
-                resultContent = formatVal(resp.value);
-              } else if (resp.tag === "RespError") {
-                resultContent = `Error: ${resp.message}`;
-              } else {
-                resultContent = JSON.stringify(resp);
-              }
+        while (true) {
+          const step = await processor.next(procResp);
+          if (step.done) {
+            const result = step.value;
+            if (result.done === true) {
+              return result.meaning;
+            } else {
+              messages.push(...result.toolResults);
               break;
-
-            case "apply":
-              // Parse fn and args
-              const fnVal = parseValLiteral(toolArgs.fn);
-              const argsVals = (toolArgs.args as string[]).map(parseValLiteral);
-              req = {
-                tag: "ReqApply",
-                fn: fnVal,
-                args: argsVals,
-                envRef: init.envRef,
-              };
-              resp = yield req;
-              if (resp.tag === "RespVal") {
-                resultContent = formatVal(resp.value);
-              } else if (resp.tag === "RespError") {
-                resultContent = `Error: ${resp.message}`;
-              } else {
-                resultContent = JSON.stringify(resp);
-              }
-              break;
-
-            case "observe":
-              req = {
-                tag: "ReqObserve",
-                what: parseObserveSpec(toolArgs.what),
-                stateRef: init.stateRef,
-              };
-              resp = yield req;
-              if (resp.tag === "RespObs") {
-                resultContent = JSON.stringify(resp.data, null, 2);
-              } else if (resp.tag === "RespError") {
-                resultContent = `Error: ${resp.message}`;
-              } else {
-                resultContent = JSON.stringify(resp);
-              }
-              break;
-
-            case "match":
-              req = {
-                tag: "ReqMatch",
-                qexpr: toolArgs.expr as string as unknown as QExpr,
-                pattern: toolArgs.pattern as string as unknown as QExpr,
-                envRef: init.envRef,
-              };
-              resp = yield req;
-              resultContent = JSON.stringify(resp);
-              break;
-
-            case "assert":
-              req = {
-                tag: "ReqAssert",
-                predicate: toolArgs.predicate as string as unknown as QExpr,
-                msg: toolArgs.msg,
-                envRef: init.envRef,
-              };
-              resp = yield req;
-              if (resp.tag === "RespAck") {
-                resultContent = "Assertion passed";
-              } else if (resp.tag === "RespError") {
-                resultContent = `Assertion failed: ${resp.message}`;
-              } else {
-                resultContent = JSON.stringify(resp);
-              }
-              break;
-
-            case "return":
-              // Parse the return value and end session
-              const retVal = parseValLiteral(toolArgs.value);
-              const confidence = toolArgs.confidence ?? 0.9;
-              return meaning({
-                denotation: retVal,
-                confidence,
-                trace: { tag: "Str", s: `adapter=openai model=${model} turns=${turn + 1}` },
-              });
-
-            default:
-              resultContent = `Unknown tool: ${toolName}`;
+            }
           }
-
-          toolResults.push({
-            role: "tool",
-            tool_call_id: tc.id,
-            content: resultContent,
-          });
+          procResp = yield step.value as OracleReq;
         }
-
-        // Add tool results to messages
-        messages.push(...toolResults);
       }
 
-      // Max turns exceeded
       return meaning({
         denotation: { tag: "Unit" },
         confidence: 0,

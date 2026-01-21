@@ -1,3 +1,13 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Generic Semantic Operations Tests
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Quick Reference: docs/USER-MANUAL--00--Quick-Reference.md#18-generic-semantic-operations
+ * Full Chapter:    docs/USER-MANUAL--18--Generic-Semantic-Operations.md
+ * Demo:            demo/by-chapter/ch18-generic-semantic.ts
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 // test/prompt14-generic/generic.spec.ts
 // SOURCE: ARCHITECTURE/32-LANGUAGE-OFFICIAL-13-IMPLEMENTATION-16.md
 // Tests for Prompt 14: Generic operations with data-directed programming

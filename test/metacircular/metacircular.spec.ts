@@ -1,3 +1,13 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Metacircular Evaluator Tests
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Quick Reference: docs/USER-MANUAL--00--Quick-Reference.md#24-metalinguistic-abstraction
+ * Full Chapter:    docs/USER-MANUAL--24--Metalinguistic-Abstraction-The-Oracle-In-The-Evaluator.md
+ * Demo:            demo/by-chapter/ch24-metacircular.ts
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 // test/metacircular/metacircular.spec.ts
 // SOURCE: ARCHITECTURE/32-LANGUAGE-OFFICIAL-13-IMPLEMENTATION-17.md
 // Prompt 7: Metacircular Evaluator and Time-Travel Debug Tests
