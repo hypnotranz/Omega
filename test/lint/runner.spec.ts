@@ -58,6 +58,35 @@ describe("LintRunner", () => {
     runner.run(makeBundle(pureFlow()));
     expect(seen).toEqual(["FPure", "FWithBudget"]);
   });
+
+  it("respects declared pass dependencies", () => {
+    const calls: string[] = [];
+    const runner = new LintRunner({}, new PrimitiveRegistry());
+
+    runner.register({
+      id: "lint/a",
+      name: "lint/a",
+      phase: "lint",
+      dependencies: ["lint/z"],
+      run: () => {
+        calls.push("a");
+        return { diagnostics: [] };
+      },
+    });
+
+    runner.register({
+      id: "lint/z",
+      name: "lint/z",
+      phase: "lint",
+      run: () => {
+        calls.push("z");
+        return { diagnostics: [] };
+      },
+    });
+
+    runner.run(makeBundle(pureFlow()));
+    expect(calls).toEqual(["z", "a"]);
+  });
 });
 
 function makePass(id: string, phase: Pass["phase"], run: Pass["run"]): Pass {

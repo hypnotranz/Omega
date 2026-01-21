@@ -112,6 +112,24 @@ describe("lint passes", () => {
       expect(result.diagnostics[0].code).toBe("E0611");
     });
 
+    it("errors when tool contract references missing schemas", () => {
+      const contractId = "tool-2";
+      const tc = toolContract(contractId);
+      const bundle = makeBundle(toolCallNode(contractRef(contractId)), {
+        toolContracts: { [contractId]: tc },
+        schemas: {},
+      });
+
+      const result = toolContractPass.run(bundle, registry);
+
+      expect(result.diagnostics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "E0612" }),
+          expect.objectContaining({ code: "E0613" }),
+        ])
+      );
+    });
+
     it("passes when contract exists in bundle", () => {
       const contractId = "tool-1";
       const tc = toolContract(contractId);

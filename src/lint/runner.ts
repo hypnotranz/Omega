@@ -4,7 +4,7 @@ import { defaultRegistry, PrimitiveRegistry } from "../registry";
 import { budgetDominatorPass } from "./passes/budgetDominator";
 import { timeoutGuardPass } from "./passes/timeoutGuard";
 import { toolContractPass } from "./passes/toolContract";
-import type { LintConfig, Pass, PassPhase, PassResult } from "./types";
+import type { LintConfig, Pass, PassConfig, PassPhase, PassResult } from "./types";
 
 const DEFAULT_CONFIG: LintConfig = { passes: {} };
 const PHASE_ORDER: PassPhase[] = ["parsing", "lowering", "normalize", "lint", "optimize"];
@@ -27,17 +27,10 @@ export class LintRunner {
     let currentBundle = bundle;
     const diagnostics: Diagnostic[] = [];
     const passResults = new Map<string, PassResult>();
-    const sorted = this.sortPasses();
+    const sorted = this.resolvePassOrder();
 
     for (const pass of sorted) {
-      const config = this.config.passes[pass.id] ?? { enabled: true };
-      const enabled = config.enabled !== false && config.severityOverride !== "off";
-      if (!enabled) {
-        continue;
-      }
-
-      this.assertDependenciesSatisfied(pass, passResults);
-
+      const config = this.getPassConfig(pass.id);
       const result = pass.run(currentBundle, this.registry);
       passResults.set(pass.id, result);
 
@@ -55,36 +48,106 @@ export class LintRunner {
     return diags.some(d => d.severity === "error");
   }
 
-  private sortPasses(): Pass[] {
-    return Array.from(this.passes.values()).sort((a, b) => {
-      const phaseA = PHASE_ORDER.indexOf(a.phase);
-      const phaseB = PHASE_ORDER.indexOf(b.phase);
-      if (phaseA !== phaseB) return phaseA - phaseB;
-      return a.id.localeCompare(b.id);
-    });
+  private resolvePassOrder(): Pass[] {
+    const enabledPasses = Array.from(this.passes.values()).filter(p => this.isPassEnabled(p.id));
+    const passLookup = new Map(enabledPasses.map(p => [p.id, p]));
+    const ordered: Pass[] = [];
+    const executed = new Set<string>();
+
+    for (const pass of enabledPasses) {
+      for (const dep of this.enabledDependencies(pass)) {
+        if (!passLookup.has(dep)) {
+          throw new Error(`Pass dependency not registered: ${dep}`);
+        }
+      }
+    }
+
+    for (const phase of PHASE_ORDER) {
+      const phasePasses = enabledPasses.filter(p => p.phase === phase);
+      if (phasePasses.length === 0) continue;
+
+      const indegree = new Map<string, number>();
+      const edges = new Map<string, Set<string>>();
+
+      for (const pass of phasePasses) {
+        indegree.set(pass.id, 0);
+        edges.set(pass.id, new Set());
+      }
+
+      for (const pass of phasePasses) {
+        for (const dep of this.enabledDependencies(pass)) {
+          const depPass = passLookup.get(dep);
+          if (!depPass) {
+            continue;
+          }
+
+          const depPhaseIndex = this.phaseIndex(depPass.phase);
+          const passPhaseIndex = this.phaseIndex(pass.phase);
+
+          if (depPhaseIndex > passPhaseIndex) {
+            throw new Error(`Pass ${pass.id} depends on ${dep} in later phase ${depPass.phase}`);
+          }
+
+          if (depPhaseIndex < passPhaseIndex) {
+            if (!executed.has(dep)) {
+              throw new Error(`Pass dependency has not run: ${dep} (required by ${pass.id})`);
+            }
+            continue;
+          }
+
+          edges.get(dep)!.add(pass.id);
+          indegree.set(pass.id, (indegree.get(pass.id) ?? 0) + 1);
+        }
+      }
+
+      const ready = phasePasses
+        .filter(p => (indegree.get(p.id) ?? 0) === 0)
+        .sort((a, b) => a.id.localeCompare(b.id));
+
+      let processed = 0;
+      while (ready.length > 0) {
+        const next = ready.shift()!;
+        ordered.push(next);
+        executed.add(next.id);
+        processed++;
+
+        for (const target of edges.get(next.id) ?? []) {
+          const updated = (indegree.get(target) ?? 0) - 1;
+          indegree.set(target, updated);
+          if (updated === 0) {
+            ready.push(passLookup.get(target)!);
+            ready.sort((a, b) => a.id.localeCompare(b.id));
+          }
+        }
+      }
+
+      if (processed !== phasePasses.length) {
+        throw new Error(`Pass dependency cycle detected in phase ${phase}`);
+      }
+    }
+
+    return ordered;
   }
 
-  private assertDependenciesSatisfied(pass: Pass, results: Map<string, PassResult>): void {
-    if (!pass.dependencies || pass.dependencies.length === 0) {
-      return;
+  private getPassConfig(passId: string): PassConfig {
+    return this.config.passes[passId] ?? { enabled: true };
+  }
+
+  private isPassEnabled(passId: string): boolean {
+    const config = this.getPassConfig(passId);
+    return config.enabled !== false && config.severityOverride !== "off";
+  }
+
+  private enabledDependencies(pass: Pass): string[] {
+    return (pass.dependencies ?? []).filter(dep => this.isPassEnabled(dep));
+  }
+
+  private phaseIndex(phase: PassPhase): number {
+    const idx = PHASE_ORDER.indexOf(phase);
+    if (idx === -1) {
+      throw new Error(`Unknown pass phase: ${phase}`);
     }
-
-    for (const dep of pass.dependencies) {
-      const depPass = this.passes.get(dep);
-      if (!depPass) {
-        throw new Error(`Pass dependency not registered: ${dep}`);
-      }
-
-      const depConfig = this.config.passes[dep] ?? { enabled: true };
-      const depEnabled = depConfig.enabled !== false && depConfig.severityOverride !== "off";
-      if (!depEnabled) {
-        continue;
-      }
-
-      if (!results.has(dep)) {
-        throw new Error(`Pass dependency has not run: ${dep} (required by ${pass.id})`);
-      }
-    }
+    return idx;
   }
 }
 
