@@ -11,10 +11,13 @@ import { VUnit, VTrue, VFalse } from "./eval/values";
 import type { Expr } from "./ast";
 import { rule, rewriteOnce, rewriteFixpoint, rewriteTrace, detectConflicts, substitute, type Rule, type Strategy } from "./oracle/trs";
 import { matchAST } from "./oracle/match";
-import { sha256JSON } from "./artifacts/hash";
 import { isMeaning } from "./oracle/meaning";
+import { evidenceId as computeEvidenceId, type Evidence } from "./provenance/evidence";
 import { registerConditionPrims } from "./conditions/prims";
 import { captureValueResumption } from "./effects/capture";
+import { registerProvenancePrims } from "./provenance/prims";
+import { registerSolverPrims } from "./solver/prims";
+import { compileTextToExpr } from "./pipeline/compileText";
 
 export function installPrims(store: Store): { env: Env; store: Store } {
   let env: Env = envEmpty();
@@ -153,6 +156,30 @@ export function installPrims(store: Store): { env: Env; store: Store } {
   def("not", { tag: "Native", name: "not", arity: 1, fn: (args, s) => {
     const b = (args[0] as any).b as boolean;
     return { ...s, control: { tag: "Val", v: (!b ? VTrue : VFalse) } };
+  }});
+
+  // Logical or (non-short-circuit in primitive form, returns first truthy value)
+  def("or", { tag: "Native", name: "or", arity: "variadic", fn: (args, s) => {
+    for (const arg of args) {
+      const truthy = !(arg.tag === "Bool" && !arg.b) && arg.tag !== "Unit";
+      if (truthy) {
+        return { ...s, control: { tag: "Val", v: arg } };
+      }
+    }
+    return { ...s, control: { tag: "Val", v: VFalse } };
+  }});
+
+  // Logical and (non-short-circuit, returns last argument when all truthy)
+  def("and", { tag: "Native", name: "and", arity: "variadic", fn: (args, s) => {
+    let last: Val = VTrue;
+    for (const arg of args) {
+      const truthy = !(arg.tag === "Bool" && !arg.b) && arg.tag !== "Unit";
+      if (!truthy) {
+        return { ...s, control: { tag: "Val", v: arg } };
+      }
+      last = arg;
+    }
+    return { ...s, control: { tag: "Val", v: last } };
   }});
 
   // Monadic primitives for nondeterminism
@@ -633,7 +660,7 @@ export function installPrims(store: Store): { env: Env; store: Store } {
   // procedure?: check if value is callable
   def("procedure?", { tag: "Native", name: "procedure?", arity: 1, fn: (args, s) => {
     const v = args[0];
-    const isProc = v.tag === "Closure" || v.tag === "Native" || v.tag === "OracleProc";
+    const isProc = v.tag === "Closure" || v.tag === "Native" || v.tag === "OracleProc" || v.tag === "Continuation" || v.tag === "Cont";
     return { ...s, control: { tag: "Val", v: isProc ? VTrue : VFalse } };
   }});
 
@@ -952,6 +979,22 @@ export function installPrims(store: Store): { env: Env; store: Store } {
       cur = cur.items[1];
     }
 
+    if (f.tag === "Continuation") {
+      if (procArgs.length !== 1) {
+        throw new Error(`apply: continuation expects 1 argument, got ${procArgs.length}`);
+      }
+      const cont = f as any;
+      return {
+        ...s,
+        control: { tag: "Val", v: procArgs[0] },
+        env: cont.env,
+        // Preserve current store to keep mutations performed before invoking continuation.
+        store: s.store,
+        kont: cont.kont.slice(),
+        handlers: cont.handlers.slice(),
+      };
+    }
+
     // Apply based on procedure type
     if (f.tag === "Native") {
       const result = applyNative(f, procArgs, s);
@@ -1132,6 +1175,41 @@ export function installPrims(store: Store): { env: Env; store: Store } {
   // Streams are pairs where cdr is a promise
   // ─────────────────────────────────────────────────────────────────
 
+  const isStreamEmptyVal = (v: Val): boolean => v.tag === "Unit" || (v.tag === "Vector" && v.items.length === 0);
+  const isStreamVal = (v: Val): boolean => isStreamEmptyVal(v) || (v.tag === "Vector" && v.items.length >= 2);
+
+  function forceStreamTailOutcome(tail: any, state: State): StepOutcome {
+    if (tail.tag !== "Promise") {
+      return { tag: "State", state: { ...state, control: { tag: "Val", v: tail } } };
+    }
+    if (tail.forced) {
+      return { tag: "State", state: { ...state, control: { tag: "Val", v: tail.value } } };
+    }
+    const thunk = tail.thunk;
+    if (thunk.tag === "Native") {
+      const result = (thunk as any).fn([], state);
+      if ((result as any).control?.tag === "Val") {
+        tail.forced = true;
+        tail.value = (result as any).control.v;
+        return { tag: "State", state: { ...state, control: { tag: "Val", v: tail.value } } };
+      }
+      return result as StepOutcome;
+    }
+    if (thunk.tag === "Closure") {
+      const memoizeFrame: Frame = { tag: "KCall", savedEnv: state.env };
+      return {
+        tag: "State",
+        state: {
+          ...state,
+          control: { tag: "Expr", e: thunk.body },
+          env: thunk.env,
+          kont: [...state.kont, memoizeFrame],
+        },
+      };
+    }
+    throw new Error(`stream: unsupported thunk type ${(thunk as any).tag}`);
+  }
+
   // the-empty-stream: sentinel for empty stream
   def("the-empty-stream", VUnit);
 
@@ -1167,6 +1245,9 @@ export function installPrims(store: Store): { env: Env; store: Store } {
       // Force native thunk
       if (thunk.tag === "Native") {
         const result = (thunk as any).fn([], s);
+        if ((result as StepOutcome).tag) {
+          return result as StepOutcome;
+        }
         if (result.control?.tag === "Val") {
           tail.forced = true;
           tail.value = result.control.v;
@@ -1281,6 +1362,71 @@ export function installPrims(store: Store): { env: Env; store: Store } {
       result = { tag: "Vector", items: [items[i], result] };
     }
     return { ...s, control: { tag: "Val", v: result } };
+  }});
+
+  const isEmptyStream = (v: Val): boolean => v.tag === "Unit" || (v.tag === "Vector" && v.items.length === 0);
+  const isStreamLike = (v: Val): v is Val & { tag: "Vector"; items: Val[] } =>
+    isEmptyStream(v) || (v.tag === "Vector" && v.items.length >= 2);
+
+  const buildInterleave = (a: Val, b: Val, state: State): { v: Val; store: Store } => {
+    if (!isStreamLike(a) || !isStreamLike(b)) {
+      const tags = `(${(a as any)?.tag ?? "unknown"}, ${(b as any)?.tag ?? "unknown"})`;
+      throw new Error(`stream-interleave: expected streams ${tags}`);
+    }
+    if (isEmptyStream(a)) {
+      return { v: b, store: state.store };
+    }
+
+    const pair = a as any;
+    const head = pair.items[0] as Val;
+
+    // Capture s1/s2 in a closure thunk so existing promise forcing logic can run it later.
+    let store = state.store;
+    const [sAfterS1, addrS1] = store.alloc(a);
+    store = sAfterS1;
+    const [sAfterS2, addrS2] = store.alloc(b);
+    store = sAfterS2;
+    let envLocal = state.env;
+    envLocal = envSet(envLocal, "s1", addrS1);
+    envLocal = envSet(envLocal, "s2", addrS2);
+
+    const tailExpr: Expr = {
+      tag: "App",
+      fn: { tag: "Var", name: "stream-interleave" },
+      args: [
+        { tag: "Var", name: "s2" },
+        { tag: "App", fn: { tag: "Var", name: "stream-cdr" }, args: [{ tag: "Var", name: "s1" }] },
+      ],
+    };
+
+    const thunk: Val = { tag: "Closure", params: [], body: tailExpr, env: envLocal };
+    const promise: Val = { tag: "Promise", thunk, forced: false, value: undefined } as any;
+    const stream: Val = { tag: "Vector", items: [head, promise] };
+    return { v: stream, store };
+  };
+
+  // stream-interleave: fairly merge two streams
+  def("stream-interleave", { tag: "Native", name: "stream-interleave", arity: 2, fn: (args, s) => {
+    const [s1, s2] = args;
+    const { v, store } = buildInterleave(s1, s2, s);
+    return { ...s, store, control: { tag: "Val", v } };
+  }});
+
+  // stream-interleave-lazy: second argument is a thunk returning a stream
+  def("stream-interleave-lazy", { tag: "Native", name: "stream-interleave-lazy", arity: 2, lazyArgs: [1], fn: (args, s) => {
+    const [s1, thunkVal] = args;
+    if (thunkVal.tag !== "Native" && thunkVal.tag !== "Closure") {
+      throw new Error("stream-interleave-lazy: expected thunk returning stream");
+    }
+
+    const applied = applyProcedure(thunkVal as any, [], s);
+    if ((applied as any).control?.tag !== "Val") {
+      throw new Error("stream-interleave-lazy: thunk did not return stream");
+    }
+    const streamVal = (applied as any).control.v as Val;
+    const { v, store } = buildInterleave(s1, streamVal, (applied as any).store ? (applied as State) : s);
+    const nextState = (applied as any).store ? (applied as State) : s;
+    return { ...nextState, store, control: { tag: "Val", v } };
   }});
 
   // stream-map: apply f to each element of stream (lazy)
@@ -2195,10 +2341,34 @@ export function installPrims(store: Store): { env: Env; store: Store } {
   // ─────────────────────────────────────────────────────────────────
   // Evidence primitives
   // ─────────────────────────────────────────────────────────────────
+  function extractEvidenceCandidate(value: unknown): Evidence | Evidence[] | undefined {
+    if (isMeaning(value as any)) {
+      const evs = (value as any).evidence;
+      if (Array.isArray(evs) && evs.length > 0) {
+        const evidences = evs.filter(isEvidenceVal);
+        if (evidences.length === 1) return evidences[0] as Evidence;
+        if (evidences.length > 1) return evidences as Evidence[];
+      }
+    }
+
+    if (Array.isArray(value)) {
+      const evidences = (value as any[]).filter(isEvidenceVal);
+      if (evidences.length === 1) return evidences[0] as Evidence;
+      if (evidences.length > 1) return evidences as Evidence[];
+    }
+
+    if (isEvidenceVal(value)) return value as Evidence;
+    if (value && typeof value === "object" && typeof (value as any).tag === "string" && (value as any).tag.endsWith("Evidence")) {
+      return value as Evidence;
+    }
+
+    return undefined;
+  }
+
   def("evidence-id", { tag: "Native", name: "evidence-id", arity: 1, fn: (args, s) => {
-    const v = args[0];
-    if (isMeaning(v) && v.evidence && v.evidence.length > 0) {
-      const id = sha256JSON(v.evidence);
+    const target = extractEvidenceCandidate(args[0]);
+    if (target) {
+      const id = computeEvidenceId(target as any);
       return { ...s, control: { tag: "Val", v: { tag: "Str", s: id } } };
     }
     return { ...s, control: { tag: "Val", v: VFalse } };
@@ -2217,6 +2387,21 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     }
     return { ...s, control: { tag: "Val", v: VTrue } };
   }});
+
+  function isEvidenceVal(value: unknown): value is Evidence {
+    if (typeof value !== "object" || value === null) return false;
+    const tag = (value as any).tag as Evidence["tag"] | string | undefined;
+    return typeof tag === "string" && EVIDENCE_TAGS.has(tag as Evidence["tag"]);
+  }
+
+  const EVIDENCE_TAGS = new Set<Evidence["tag"]>([
+    "TestEvidence",
+    "NoMatchEvidence",
+    "EqExtEvidence",
+    "OracleEvidence",
+    "TransformEvidence",
+    "DerivedEvidence",
+  ]);
 
   // ─────────────────────────────────────────────────────────────────
   // Machine primitives (Prompt 8): Reified execution state
@@ -2480,6 +2665,17 @@ export function installPrims(store: Store): { env: Env; store: Store } {
   def("machine?", { tag: "Native", name: "machine?", arity: 1, fn: (args, s) => {
     return { ...s, control: { tag: "Val", v: args[0].tag === "Machine" ? VTrue : VFalse } };
   }});
+
+  // Provenance primitives (provenance graph + evidence operations)
+  registerProvenancePrims(def);
+
+  // Solver primitives (budgeted search, fixpoints, repair loops, facts)
+  registerSolverPrims(def, {
+    applyProcedure,
+    ensureArity,
+    isCallable,
+    emitAmb: (choices, state) => emitAmbChoose(choices, state),
+  });
 
   return { env, store: st };
 }

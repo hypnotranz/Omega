@@ -70,6 +70,12 @@ describe("Evidence primitives", () => {
     expect(expectBool(result)).toBe(false);
   });
 
+  it("evidence-id accepts raw Evidence values", async () => {
+    const result = await evalWithBindings(`(evidence-id ev)`, { ev: ev as unknown as Val });
+    const id = expectStr(result);
+    expect(id).toBe(meaningId);
+  });
+
   it("operations on non-Meaning values default to false/true", async () => {
     const id = await evalWithBindings(`(evidence-id 42)`, {});
     const verified = await evalWithBindings(`(verify-evidence 42)`, {});
