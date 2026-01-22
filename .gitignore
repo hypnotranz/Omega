@@ -29,5 +29,6 @@ Thumbs.db
 
 # Test artifacts
 coverage/
+.omega-session/
 __pycache__/
 *.pyc
