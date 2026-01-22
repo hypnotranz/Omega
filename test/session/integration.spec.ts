@@ -1,28 +1,34 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { spawn } from "child_process";
+import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
 
-const SESSION_DIR = ".omega-session-test";
 const REPL_TIMEOUT_MS = 120_000;
 const REPL_COMMAND_DELAY_MS = 800;
 const REPL_START_DELAY_MS = 800;
 
 type ReplRun = { raw: string; lines: string[] };
 
-function cleanupSessionDir(): void {
-  if (fs.existsSync(SESSION_DIR)) {
-    fs.rmSync(SESSION_DIR, { recursive: true });
+let sessionDir = "";
+
+function createSessionDir(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "omega-session-test-"));
+}
+
+function cleanupSessionDir(dir: string): void {
+  if (dir && fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
-async function runRepl(commands: string[]): Promise<ReplRun> {
+async function runRepl(commands: string[], targetDir: string): Promise<ReplRun> {
   return new Promise((resolve, reject) => {
     const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
     const proc = spawn(npxCmd, ["tsx", "bin/omega-repl.ts"], {
       env: {
         ...process.env,
-        OMEGA_SESSION_DIR: SESSION_DIR,
+        OMEGA_SESSION_DIR: targetDir,
         OMEGA_SCRIPTED_ORACLE: "1",
         CI: "1",
       },
@@ -69,16 +75,18 @@ async function runRepl(commands: string[]): Promise<ReplRun> {
 }
 
 describe("Session integration (REPL)", () => {
-  beforeEach(() => cleanupSessionDir());
-  afterEach(() => cleanupSessionDir());
+  beforeEach(() => {
+    sessionDir = createSessionDir();
+  });
+  afterEach(() => cleanupSessionDir(sessionDir));
 
   it("auto-saves session to current.jsonl", async () => {
     await runRepl([
       "(define x 42)",
       "(+ x 1)",
-    ]);
+    ], sessionDir);
 
-    const currentFile = path.join(SESSION_DIR, "sessions", "current.jsonl");
+    const currentFile = path.join(sessionDir, "sessions", "current.jsonl");
     expect(fs.existsSync(currentFile)).toBe(true);
 
     const content = fs.readFileSync(currentFile, "utf8");
@@ -90,10 +98,10 @@ describe("Session integration (REPL)", () => {
     await runRepl([
       "(define x 42)",
       ":session save my-test",
-    ]);
+    ], sessionDir);
 
-    const savedFile = path.join(SESSION_DIR, "sessions", "my-test.jsonl");
-    const indexFile = path.join(SESSION_DIR, "sessions", "my-test.index.json");
+    const savedFile = path.join(sessionDir, "sessions", "my-test.jsonl");
+    const indexFile = path.join(sessionDir, "sessions", "my-test.index.json");
 
     expect(fs.existsSync(savedFile)).toBe(true);
     expect(fs.existsSync(indexFile)).toBe(true);
@@ -103,10 +111,10 @@ describe("Session integration (REPL)", () => {
     await runRepl([
       "(define x 1)",
       ":session fork fork-test",
-    ]);
+    ], sessionDir);
 
-    const forkFile = path.join(SESSION_DIR, "sessions", "fork-test.jsonl");
-    const forkIndex = path.join(SESSION_DIR, "sessions", "fork-test.index.json");
+    const forkFile = path.join(sessionDir, "sessions", "fork-test.jsonl");
+    const forkIndex = path.join(sessionDir, "sessions", "fork-test.index.json");
 
     expect(fs.existsSync(forkFile)).toBe(true);
     expect(fs.existsSync(forkIndex)).toBe(true);
@@ -116,13 +124,13 @@ describe("Session integration (REPL)", () => {
     await runRepl([
       "(define my-fn (lambda (x) (* x 2)))",
       ":session save env-test",
-    ]);
+    ], sessionDir);
 
     const { lines } = await runRepl([
       ":session load env-test",
       ":session goto 999",
       "(my-fn 21)",
-    ]);
+    ], sessionDir);
 
     expect(lines.some(l => l.includes("=>") && l.includes("42"))).toBe(true);
   });
@@ -131,11 +139,11 @@ describe("Session integration (REPL)", () => {
     await runRepl([
       '(effect infer.op "test prompt")',
       ":session save llm-test",
-    ]);
+    ], sessionDir);
 
     const index = JSON.parse(
       fs.readFileSync(
-        path.join(SESSION_DIR, "sessions", "llm-test.index.json"),
+        path.join(sessionDir, "sessions", "llm-test.index.json"),
         "utf8"
       )
     );
@@ -151,11 +159,11 @@ describe("Session integration (REPL)", () => {
       "(set! counter 2)",
       "(set! counter 3)",
       ":session save counter-test",
-    ]);
+    ], sessionDir);
 
     const index = JSON.parse(
       fs.readFileSync(
-        path.join(SESSION_DIR, "sessions", "counter-test.index.json"),
+        path.join(sessionDir, "sessions", "counter-test.index.json"),
         "utf8"
       )
     );
@@ -165,7 +173,7 @@ describe("Session integration (REPL)", () => {
       ":session load counter-test",
       `:session goto ${targetSeq ?? 0}`,
       "counter",
-    ]);
+    ], sessionDir);
 
     expect(lines.some(l => l.includes("=>") && l.includes("2"))).toBe(true);
   });
@@ -174,11 +182,11 @@ describe("Session integration (REPL)", () => {
     await runRepl([
       '(effect infer.op "What is 2+2?")',
       ":session save receipt-test",
-    ]);
+    ], sessionDir);
 
     const index = JSON.parse(
       fs.readFileSync(
-        path.join(SESSION_DIR, "sessions", "receipt-test.index.json"),
+        path.join(sessionDir, "sessions", "receipt-test.index.json"),
         "utf8"
       )
     );
@@ -188,7 +196,7 @@ describe("Session integration (REPL)", () => {
       ":session load receipt-test",
       `:session goto ${resumeSeq}`,
       ":session resume",
-    ]);
+    ], sessionDir);
 
     expect(/cached/i.test(raw)).toBe(true);
   });
@@ -198,11 +206,11 @@ describe("Session integration (REPL)", () => {
       "(define (double x) (* x 2))",
       "(double 5)",
       ":session save what-if-test",
-    ]);
+    ], sessionDir);
 
     const index = JSON.parse(
       fs.readFileSync(
-        path.join(SESSION_DIR, "sessions", "what-if-test.index.json"),
+        path.join(sessionDir, "sessions", "what-if-test.index.json"),
         "utf8"
       )
     );
@@ -212,7 +220,7 @@ describe("Session integration (REPL)", () => {
       ":session load what-if-test",
       `:session goto ${seq}`,
       "(double 100)",
-    ]);
+    ], sessionDir);
 
     expect(lines.some(l => l.includes("=>") && l.includes("200"))).toBe(true);
   });
@@ -223,11 +231,11 @@ describe("Session integration (REPL)", () => {
       "(define (scale x) (* x multiplier))",
       "(scale 5)",
       ":session save modify-env-test",
-    ]);
+    ], sessionDir);
 
     const index = JSON.parse(
       fs.readFileSync(
-        path.join(SESSION_DIR, "sessions", "modify-env-test.index.json"),
+        path.join(sessionDir, "sessions", "modify-env-test.index.json"),
         "utf8"
       )
     );
@@ -238,7 +246,7 @@ describe("Session integration (REPL)", () => {
       `:session goto ${seq}`,
       "(set! multiplier 10)",
       "(scale 5)",
-    ]);
+    ], sessionDir);
 
     expect(lines.some(l => l.includes("=>") && l.includes("50"))).toBe(true);
   });
@@ -248,12 +256,12 @@ describe("Session integration (REPL)", () => {
       "(define (nested x) (+ x 1))",
       "(nested (nested 1))",
       ":session save trace-test",
-    ]);
+    ], sessionDir);
 
     const { raw } = await runRepl([
       ":session load trace-test",
       ":session trace",
-    ]);
+    ], sessionDir);
 
     expect(raw).toMatch(/\[\d+\]\s+REPL/);
     expect(raw).toMatch(/\[\d+\]\s+EVAL/);
@@ -268,15 +276,33 @@ describe("Session integration (REPL)", () => {
       "(push 2)",
       "(push 3)",
       ":session save roundtrip-test",
-    ]);
+    ], sessionDir);
 
     const { lines } = await runRepl([
       ":session load roundtrip-test",
       ":session goto 999",
       "acc",
-    ]);
+    ], sessionDir);
 
     const hasValues = lines.some(l => l.includes("=>") && l.includes("3") && l.includes("2") && l.includes("1"));
     expect(hasValues).toBe(true);
+  });
+
+  it("isolates parallel repl runs with distinct session dirs", async () => {
+    const firstDir = createSessionDir();
+    const secondDir = createSessionDir();
+
+    try {
+      await Promise.all([
+        runRepl(["(define x 1)", "(+ x 1)"], firstDir),
+        runRepl(["(define y 2)", "(+ y 2)"], secondDir),
+      ]);
+
+      expect(fs.existsSync(path.join(firstDir, "sessions", "current.jsonl"))).toBe(true);
+      expect(fs.existsSync(path.join(secondDir, "sessions", "current.jsonl"))).toBe(true);
+    } finally {
+      cleanupSessionDir(firstDir);
+      cleanupSessionDir(secondDir);
+    }
   });
 });
