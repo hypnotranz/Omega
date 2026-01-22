@@ -1,35 +1,22 @@
-import type { Expr, Pattern } from "../ast";
-import type { ConditionHandler, RestartBinding, RestartPoint, ConditionVal } from "../conditions/types";
+import type { Expr } from "../ast";
+import type { ConditionVal, RestartPoint } from "../conditions/types";
 import type { Ctx } from "../ctx/ctx";
-import { isCtx } from "../ctx/ctx";
-import type { Resumption } from "../effects/opcall";
-import type { HandlerFrame, Frame, State, Control } from "../eval/machine";
+import type { Control, Frame, HandlerFrame, State } from "../eval/machine";
 import type { Store } from "../eval/store";
 import { COWStore } from "../eval/store";
-import type { DistVal } from "../eval/dist";
-import type { MeaningVal, Obligation, RewriteStep } from "../oracle/meaning";
-import type { Val, SolverVal } from "../eval/values";
-import type { CapSet } from "../governance/caps";
-import type { Profile } from "../governance/profile";
-import type { Hash } from "../artifacts/hash";
-
-export type SerializedVal = { tag: string; [key: string]: unknown };
+import type { Val } from "../eval/values";
 
 export type SerializedCtx = {
   id: string;
   parentId: string | null;
   frameEntries: Array<[string, number]>;
   profile: string;
-  caps: CapSet;
+  caps: string[];
   budgets: Record<string, unknown>;
   constraints: unknown[];
   sealed: boolean;
   evidence: unknown[];
 };
-
-export type SerializedControl =
-  | { tag: "Expr"; e: Expr }
-  | { tag: "Val"; v: SerializedVal };
 
 export type SerializedHandlerFrame = {
   hid: string;
@@ -39,254 +26,192 @@ export type SerializedHandlerFrame = {
   fin?: { body: Expr };
 };
 
-export type SerializedFrame = { tag: string; [key: string]: unknown };
-
-export type SerializedResumption = {
-  rid: string;
-  baseState: SerializedState;
+export type SerializedRestart = {
+  name: string;
+  description?: string;
+  kont: SerializedFrame[];
+  envId: string;
+  storeEntries: [number, SerializedVal][];
+  handlers: SerializedHandlerFrame[];
 };
+
+export type SerializedFrame =
+  | { tag: "KIf"; conseq: Expr; alt: Expr; envId: string }
+  | { tag: "KBegin"; rest: Expr[]; envId: string }
+  | { tag: "KDefine"; name: string; envId: string }
+  | { tag: "KSet"; name: string; envId: string }
+  | { tag: "KAppFun"; args: Expr[]; envId: string }
+  | { tag: "KAppArg"; fnVal: SerializedVal; pending: Expr[]; acc: SerializedVal[]; envId: string }
+  | { tag: "KAppArgLazy"; fnVal: SerializedVal; pending: Array<{ expr: Expr; idx: number }>; acc: Array<{ idx: number; val: SerializedVal }>; envId: string; totalArgs: number; currentIdx: number }
+  | { tag: "KCall"; savedEnvId: string }
+  | { tag: "KEffect"; op: string; pending: Expr[]; acc: SerializedVal[]; envId: string }
+  | { tag: "KHandleBoundary"; hid: string; savedHandlersDepth: number; resumeTo?: { kont: SerializedFrame[]; handlersDepth: number } }
+  | { tag: "KHandleReturn"; mode: "exit" | "resume"; hid: string; targetKont: SerializedFrame[]; targetHandlersDepth: number; savedHandlersDepth: number }
+  | { tag: "KPrompt"; promptTag: SerializedVal; handler: SerializedVal; envId: string; savedKont: SerializedFrame[]; savedHandlersDepth: number }
+  | { tag: "KMatch"; clauses: Array<{ pat: unknown; body: Expr }>; envId: string }
+  | { tag: "KOracleLambda"; params: string[]; envId: string }
+  | { tag: "KBind"; fn: SerializedVal; envId: string }
+  | { tag: "KHandlerBind"; handlers: Array<{ type: string | "*"; handler: SerializedVal }> }
+  | { tag: "KRestartBind"; restarts: SerializedRestart[]; savedKont: SerializedFrame[]; envId: string; storeEntries: [number, SerializedVal][]; handlers: SerializedHandlerFrame[] }
+  | { tag: "KSignaling"; condition: SerializedVal; required: boolean }
+  | { tag: string; [key: string]: unknown };
+
+export type SerializedControl =
+  | { tag: "Expr"; e: Expr }
+  | { tag: "Val"; v: SerializedVal };
 
 export type SerializedState = {
   control: SerializedControl;
-  envId: string | null;
-  storeEntries: Array<[number, SerializedVal]>;
+  envId: string;
+  storeEntries: [number, SerializedVal][];
+  storeNext?: number;
   kont: SerializedFrame[];
   handlers: SerializedHandlerFrame[];
   ctxTable: Record<string, SerializedCtx>;
+  profile?: unknown;
+  budget?: unknown;
+  sec?: { caps?: string[] };
 };
+
+export type SerializedVal =
+  | { tag: "Unit" }
+  | { tag: "Uninit" }
+  | { tag: "Num"; n: number }
+  | { tag: "Int"; value: string }
+  | { tag: "Bool"; b: boolean }
+  | { tag: "Str"; s: string }
+  | { tag: "Sym"; name: string }
+  | { tag: "Err"; message?: string }
+  | { tag: "Pair"; car: SerializedVal; cdr: SerializedVal }
+  | { tag: "Vector"; items: SerializedVal[] }
+  | { tag: "List"; elements: SerializedVal[] }
+  | { tag: "Map"; entries: Array<[SerializedVal, SerializedVal]> }
+  | { tag: "Tagged"; typeTag: string; payload: SerializedVal }
+  | { tag: "Syntax"; stx: unknown }
+  | { tag: "Closure"; params: string[]; body: Expr; envId: string }
+  | { tag: "Native"; name: string; arity: number | "variadic"; lazyArgs?: number[] }
+  | { tag: "Cont"; hid: string; boundaryIndex: number; resumption: { rid: string; baseState: SerializedState } }
+  | { tag: "OracleProc"; params: string[]; spec: SerializedVal; envId: string; policyDigest?: string }
+  | { tag: "Continuation"; kont: SerializedFrame[]; envId: string; storeEntries: [number, SerializedVal][]; handlers: SerializedHandlerFrame[] }
+  | { tag: "Machine"; state: SerializedState; label?: string; stepCount: number; breakOnOps?: string[]; breakOnPatterns?: string[]; lastOutcome?: unknown; isDone: boolean; machineId: string; parentId?: string }
+  | { tag: "Dist"; support: Array<{ v: SerializedVal; w: number }>; normalized?: boolean; meta?: unknown }
+  | { tag: "Meaning"; denotation?: SerializedVal; residual?: SerializedVal; rewrite?: SerializedVal; invariants?: SerializedVal; effects?: SerializedVal; cost?: SerializedVal; paths?: SerializedVal; deps?: SerializedVal; memo?: SerializedVal; obligation?: SerializedVal; obligations?: unknown[]; evidence?: unknown[]; confidence?: number; trace?: SerializedVal; adoptEnvRef?: string; adoptStateRef?: string }
+  | { tag: "Profile"; profileId: string; profile: any }
+  | { tag: "Ctx"; ctxId: string }
+  | { tag: "Module"; moduleId: any; sealedCtxId: string; exports: string[]; meta?: any }
+  | { tag: "ReceiptRef"; rid: any; kind: string }
+  | { tag: "ConnRef"; id: string; netId: string; name?: string }
+  | { tag: "NetRef"; id: string; name?: string }
+  | { tag: "Explanation"; kind: string; conn?: SerializedVal; valueHash?: string; because?: SerializedVal; rule?: string; deps?: SerializedVal[]; left?: SerializedVal; right?: SerializedVal; message?: string; op?: string; reason?: string; profile?: string }
+  | { tag: "Contradiction"; explanation: SerializedVal; constraintId?: string; netId?: string }
+  | { tag: "Fiber"; id: number; name?: string }
+  | { tag: "Mutex"; id: string; name?: string }
+  | { tag: "IVar"; id: string; name?: string }
+  | { tag: "Channel"; id: string; bufferSize: number; name?: string }
+  | { tag: "Actor"; id: string; fiberId: number; name?: string }
+  | { tag: "Promise"; id: string; label?: string }
+  | { tag: "GenericRegistry"; id: string; name?: string }
+  | { tag: "GenericMiss"; op: string; signature: string[]; argsPreview: SerializedVal[]; registryId: string; profileName?: string }
+  | { tag: "Stream"; isEmpty: boolean; head?: SerializedVal; tail?: SerializedVal }
+  | { tag: "IR"; form: string; digest: string; irRef: string; label?: string }
+  | { tag: "Budget"; tokens: number; calls: number; time: number }
+  | { tag: "Result"; kind: string; solution?: SerializedVal; remaining?: SerializedVal; reason?: string; cost: number }
+  | { tag: "CostEstimate"; minCost: number; maxCost: number; expectedCost: number; confidence: number }
+  | { tag: "Solver"; name: string }
+  | { tag: "FactStore"; factsEntries: Array<[string, SerializedVal]> }
+  | { tag: "Condition"; kind: string; message?: string; payload?: SerializedVal; restarts?: SerializedRestart[] }
+  | { tag: string; [key: string]: unknown };
+
+function serializeProfile(profile: any): any {
+  if (!profile) return profile;
+  return {
+    ...profile,
+    allowedCaps: profile.allowedCaps ? Array.from(profile.allowedCaps) : undefined,
+    allowedOps: profile.allowedOps ? Array.from(profile.allowedOps) : undefined,
+    allowedOracleReqTags: profile.allowedOracleReqTags ? Array.from(profile.allowedOracleReqTags) : undefined,
+  };
+}
+
+function deserializeProfile(profile: any): any {
+  if (!profile) return profile;
+  return {
+    ...profile,
+    allowedCaps: profile.allowedCaps ? new Set(profile.allowedCaps) : undefined,
+    allowedOps: profile.allowedOps ? new Set(profile.allowedOps) : undefined,
+    allowedOracleReqTags: profile.allowedOracleReqTags ? new Set(profile.allowedOracleReqTags) : undefined,
+  };
+}
 
 export function serializeState(state: State): SerializedState {
   const ctxTable: Record<string, SerializedCtx> = {};
+  const ctxIds = new Map<Ctx, string>();
 
-  function collectCtx(ctx: Ctx): string {
-    const id = (ctx as any).cid ?? `ctx-${Object.keys(ctxTable).length}`;
-    if (ctxTable[id]) return id;
+  const controlInput: Control | undefined = (state as any).control ?? (state as any).ctrl;
+  if (!controlInput) {
+    throw new Error("State missing control");
+  }
 
-    const entry: SerializedCtx = {
+  function collectCtx(ctx: Ctx | undefined): string {
+    if (!ctx) return "null";
+    const existing = ctxIds.get(ctx);
+    if (existing) return existing;
+    const id = (ctx as any).cid ?? `ctx-${ctxIds.size}`;
+    ctxIds.set(ctx, id);
+    ctxTable[id] = {
       id,
-      parentId: null,
-      frameEntries: Array.from(ctx.frame?.entries?.() ?? []),
-      profile: (ctx as any).profile ?? "",
-      caps: Array.from((ctx as any).caps ?? []) as CapSet,
+      parentId: (ctx as any).parent ? collectCtx((ctx as any).parent) : null,
+      frameEntries: Array.from((ctx as any).frame?.entries?.() ?? []),
+      profile: (ctx as any).profile,
+      caps: Array.from((ctx as any).caps ?? []),
       budgets: (ctx as any).budgets ?? {},
       constraints: (ctx as any).constraints ?? [],
       sealed: !!(ctx as any).sealed,
       evidence: (ctx as any).evidence ?? [],
     };
-    ctxTable[id] = entry;
-    entry.parentId = ctx.parent ? collectCtx(ctx.parent) : null;
-
     return id;
   }
 
-  function serializeMeaning(m: MeaningVal): SerializedVal {
-    const serializeIfVal = (v: unknown) => (v && typeof v === "object" && (v as any).tag ? serializeVal(v as Val) : v);
-    const mapRewriteStep = (step: RewriteStep): RewriteStep => ({
-      ...step,
-      before: serializeIfVal(step.before) as any,
-      after: serializeIfVal(step.after) as any,
-    });
-
-    return {
-      tag: "Meaning",
-      denotation: serializeIfVal(m.denotation),
-      residual: serializeIfVal(m.residual),
-      rewrite: serializeIfVal(m.rewrite),
-      invariants: serializeIfVal((m as any).invariants),
-      effects: serializeIfVal((m as any).effects),
-      cost: serializeIfVal((m as any).cost),
-      paths: serializeIfVal((m as any).paths),
-      deps: serializeIfVal((m as any).deps),
-      memo: serializeIfVal((m as any).memo),
-      obligation: serializeIfVal((m as any).obligation),
-      obligations: (m.obligations as Obligation[] | undefined)?.map(o => ({
-        ...o,
-        domain: serializeIfVal((o as any).domain),
-      })),
-      evidence: (m.evidence as any) ?? undefined,
-      confidence: m.confidence,
-      trace: Array.isArray(m.trace) ? (m.trace as RewriteStep[]).map(mapRewriteStep) : serializeIfVal(m.trace as Val),
-      adoptEnvRef: (m as any).adoptEnvRef,
-      adoptStateRef: (m as any).adoptStateRef,
-    };
-  }
-
-  function serializeExplanation(expl: any): SerializedVal {
-    if (!expl || typeof expl !== "object") return { tag: "Explanation", kind: "unknown" } as SerializedVal;
-    if (expl.tag !== "Explanation") return expl as SerializedVal;
-    if (expl.kind === "assumption") {
-      return {
-        tag: "Explanation",
-        kind: "assumption",
-        conn: serializeVal(expl.conn),
-        valueHash: expl.valueHash,
-        because: serializeVal(expl.because as Val),
-      } as SerializedVal;
-    }
-    if (expl.kind === "derived") {
-      return {
-        tag: "Explanation",
-        kind: "derived",
-        conn: serializeVal(expl.conn),
-        valueHash: expl.valueHash,
-        rule: expl.rule,
-        deps: (expl.deps ?? []).map((d: any) => serializeExplanation(d)),
-      } as SerializedVal;
-    }
-    if (expl.kind === "conflict") {
-      return {
-        tag: "Explanation",
-        kind: "conflict",
-        conn: serializeVal(expl.conn),
-        left: serializeExplanation(expl.left),
-        right: serializeExplanation(expl.right),
-        message: expl.message,
-      } as SerializedVal;
-    }
-    if (expl.kind === "denied") {
-      return { tag: "Explanation", kind: "denied", op: expl.op, reason: expl.reason, profile: expl.profile } as SerializedVal;
-    }
-    return { tag: "Explanation", kind: expl.kind } as SerializedVal;
-  }
-
-  function serializeCondition(cond: ConditionVal): SerializedVal {
-    return {
-      tag: "Condition",
-      type: cond.type && typeof cond.type === "symbol" ? cond.type.description ?? String(cond.type) : String(cond.type),
-      message: cond.message,
-      data: serializeVal(cond.data),
-      restarts: cond.restarts.map(r => ({
-        name: r.name && typeof r.name === "symbol" ? r.name.description ?? String(r.name) : String(r.name),
-        description: r.description,
-        kont: r.kont.map(serializeFrame),
-        envId: isCtx(r.env) ? collectCtx(r.env) : "unknown-env",
-        storeEntries: serializeStore(r.store),
-        handlers: r.handlers.map(serializeHandler),
-      })),
-    } as SerializedVal;
-  }
-
-  function serializeStore(store: Store): Array<[number, SerializedVal]> {
-    const entries: Array<[number, SerializedVal]> = [];
-    for (let addr = 0; addr < store.next; addr++) {
+  function serializeStore(store: Store | undefined): [number, SerializedVal][] {
+    const entries: [number, SerializedVal][] = [];
+    if (!store) return entries;
+    const max = (store as any).next ?? 0;
+    for (let addr = 0; addr < max; addr++) {
       try {
         const val = store.read(addr);
         entries.push([addr, serializeVal(val)]);
       } catch {
-        // Skip invalid addresses
+        // Ignore holes
       }
     }
     return entries;
   }
 
-  function serializeHandler(h: HandlerFrame): SerializedHandlerFrame {
+  function serializeRestart(r: RestartPoint): SerializedRestart {
     return {
-      hid: h.hid,
-      envId: isCtx(h.env) ? collectCtx(h.env) : "unknown-env",
-      on: Array.from(h.on?.entries?.() ?? []),
-      ret: h.ret,
-      fin: h.fin,
+      name: (r.name as any)?.toString?.() ?? "restart",
+      description: r.description,
+      kont: (r.kont ?? []).map(serializeFrame),
+      envId: collectCtx(r.env as Ctx),
+      storeEntries: serializeStore(r.store),
+      handlers: (r.handlers ?? []).map(serializeHandler),
     };
   }
 
-  function serializeResumption(resumption: Resumption): SerializedResumption {
+  function serializeCondition(v: ConditionVal): SerializedVal {
     return {
-      rid: resumption.rid,
-      baseState: serializeState(resumption.base),
+      tag: "Condition",
+      kind: (v.type as any)?.toString?.() ?? "condition",
+      message: v.message,
+      payload: serializeVal(v.data),
+      restarts: (v.restarts ?? []).map(serializeRestart),
     };
-  }
-
-  function serializeFrame(f: Frame): SerializedFrame {
-    switch (f.tag) {
-      case "KIf":
-        return { tag: "KIf", conseq: f.conseq, alt: f.alt, envId: collectCtx(f.env) };
-      case "KBegin":
-        return { tag: "KBegin", rest: f.rest, envId: collectCtx(f.env) };
-      case "KDefine":
-        return { tag: "KDefine", name: f.name, envId: collectCtx(f.env) };
-      case "KSet":
-        return { tag: "KSet", name: f.name, envId: collectCtx(f.env) };
-      case "KAppFun":
-        return { tag: "KAppFun", args: f.args, envId: collectCtx(f.env) };
-      case "KAppArg":
-        return { tag: "KAppArg", fnVal: serializeVal(f.fnVal), pending: f.pending, acc: f.acc.map(serializeVal), envId: collectCtx(f.env) };
-      case "KAppArgLazy":
-        return {
-          tag: "KAppArgLazy",
-          fnVal: serializeVal(f.fnVal),
-          pending: f.pending,
-          acc: f.acc.map(a => ({ idx: a.idx, val: serializeVal(a.val) })),
-          envId: collectCtx(f.env),
-          totalArgs: f.totalArgs,
-          currentIdx: f.currentIdx,
-        };
-      case "KCall":
-        return { tag: "KCall", savedEnvId: collectCtx(f.savedEnv) };
-      case "KEffect":
-        return { tag: "KEffect", op: f.op, pending: f.pending, acc: f.acc.map(serializeVal), envId: collectCtx(f.env) };
-      case "KHandleBoundary":
-        return {
-          tag: "KHandleBoundary",
-          hid: f.hid,
-          savedHandlersDepth: f.savedHandlersDepth,
-          resumeTo: f.resumeTo
-            ? { kont: f.resumeTo.kont.map(serializeFrame), handlersDepth: f.resumeTo.handlersDepth }
-            : undefined,
-        };
-      case "KHandleReturn":
-        return {
-          tag: "KHandleReturn",
-          mode: f.mode,
-          hid: f.hid,
-          targetKont: f.targetKont.map(serializeFrame),
-          targetHandlersDepth: f.targetHandlersDepth,
-          savedHandlersDepth: f.savedHandlersDepth,
-        };
-      case "KPrompt":
-        return {
-          tag: "KPrompt",
-          promptTag: serializeVal(f.promptTag),
-          handler: serializeVal(f.handler),
-          envId: collectCtx(f.env),
-          savedKont: f.savedKont.map(serializeFrame),
-          savedHandlersDepth: f.savedHandlersDepth,
-        };
-      case "KMatch":
-        return { tag: "KMatch", clauses: f.clauses as Pattern[], envId: collectCtx(f.env) };
-      case "KOracleLambda":
-        return { tag: "KOracleLambda", params: f.params, envId: collectCtx(f.env) };
-      case "KBind":
-        return { tag: "KBind", fn: serializeVal(f.fn), envId: collectCtx(f.env) };
-      case "KHandlerBind":
-        return {
-          tag: "KHandlerBind",
-          handlers: (f.handlers ?? []).map(h => ({
-            type: typeof h.type === "symbol" ? h.type.description ?? String(h.type) : h.type,
-            handler: serializeVal(h.handler),
-          })),
-        };
-      case "KRestartBind":
-        return {
-          tag: "KRestartBind",
-          restarts: (f.restarts ?? []).map(r => ({
-            name: typeof r.name === "symbol" ? r.name.description ?? String(r.name) : r.name,
-            fn: serializeVal(r.fn),
-            description: r.description,
-          })),
-          savedKont: f.savedKont.map(serializeFrame),
-          envId: collectCtx(f.env),
-          storeEntries: serializeStore(f.store),
-          handlers: f.handlers.map(serializeHandler),
-        };
-      case "KSignaling":
-        return { tag: "KSignaling", condition: serializeVal(f.condition as Val), required: f.required };
-      default:
-        throw new Error(`serializeFrame: unhandled tag ${(f as any).tag}`);
-    }
   }
 
   function serializeVal(v: Val): SerializedVal {
-    if (!v || typeof v !== "object") return { tag: "Unit" } as SerializedVal;
+    if (!v || typeof v !== "object") {
+      return { tag: "Unit" };
+    }
+
     switch ((v as any).tag) {
       case "Unit":
       case "Uninit":
@@ -297,33 +222,26 @@ export function serializeState(state: State): SerializedState {
       case "Err":
         return v as SerializedVal;
       case "Int":
-        return { tag: "Int", value: (v as any).value.toString() } as SerializedVal;
+        return { tag: "Int", value: (v as any).value.toString() };
       case "Pair":
-        return { tag: "Pair", car: serializeVal((v as any).car), cdr: serializeVal((v as any).cdr) } as SerializedVal;
+        return { tag: "Pair", car: serializeVal((v as any).car), cdr: serializeVal((v as any).cdr) };
       case "Vector":
-        return { tag: "Vector", items: (v as any).items.map(serializeVal) } as SerializedVal;
+        return { tag: "Vector", items: ((v as any).items ?? []).map(serializeVal) };
       case "List":
-        return { tag: "List", elements: (v as any).elements.map(serializeVal) } as SerializedVal;
+        return { tag: "List", elements: ((v as any).elements ?? []).map(serializeVal) };
       case "Map":
         return {
           tag: "Map",
-          entries: (v as any).entries.map(([k, val]: [Val, Val]) => [serializeVal(k), serializeVal(val)]),
-        } as SerializedVal;
+          entries: ((v as any).entries ?? []).map(([k, val]: [Val, Val]) => [serializeVal(k), serializeVal(val)]),
+        };
       case "Tagged":
-        return { tag: "Tagged", typeTag: (v as any).typeTag, payload: serializeVal((v as any).payload) } as SerializedVal;
+        return { tag: "Tagged", typeTag: (v as any).typeTag, payload: serializeVal((v as any).payload) };
       case "Syntax":
-        return { tag: "Syntax", stx: (v as any).stx } as SerializedVal;
-      case "Dist": {
-        const dist = v as DistVal;
-        return {
-          tag: "Dist",
-          support: dist.support.map(it => ({ v: serializeVal(it.v), w: it.w })),
-          normalized: dist.normalized,
-          meta: (dist as any).meta,
-        } as SerializedVal;
-      }
+        return { tag: "Syntax", stx: (v as any).stx };
       case "Closure":
-        return { tag: "Closure", params: (v as any).params, body: (v as any).body, envId: collectCtx((v as any).env) } as SerializedVal;
+        return { tag: "Closure", params: (v as any).params, body: (v as any).body, envId: collectCtx((v as any).env) };
+      case "Native":
+        return { tag: "Native", name: (v as any).name, arity: (v as any).arity, lazyArgs: (v as any).lazyArgs };
       case "OracleProc":
         return {
           tag: "OracleProc",
@@ -331,43 +249,63 @@ export function serializeState(state: State): SerializedState {
           spec: serializeVal((v as any).spec),
           envId: collectCtx((v as any).env),
           policyDigest: (v as any).policyDigest,
-        } as SerializedVal;
+        };
       case "Continuation":
         return {
           tag: "Continuation",
-          kont: (v as any).kont.map(serializeFrame),
+          kont: ((v as any).kont ?? []).map(serializeFrame),
           envId: collectCtx((v as any).env),
           storeEntries: serializeStore((v as any).store),
-          handlers: (v as any).handlers.map(serializeHandler),
-        } as SerializedVal;
+          handlers: ((v as any).handlers ?? []).map(serializeHandler),
+        };
       case "Machine":
         return {
           tag: "Machine",
           state: serializeState((v as any).state),
           label: (v as any).label,
           stepCount: (v as any).stepCount ?? 0,
-          breakOnOps: (v as any).breakOnOps ? Array.from((v as any).breakOnOps as Set<string>) : undefined,
+          breakOnOps: (v as any).breakOnOps ? Array.from((v as any).breakOnOps) : undefined,
           breakOnPatterns: (v as any).breakOnPatterns,
-          isDone: (v as any).isDone ?? false,
+          lastOutcome: (v as any).lastOutcome,
+          isDone: !!(v as any).isDone,
+          machineId: (v as any).machineId ?? "",
           parentId: (v as any).parentId,
-          machineId: (v as any).machineId,
-        } as SerializedVal;
-      case "Native":
+        };
+      case "Dist":
         return {
-          tag: "Native",
-          name: (v as any).name,
-          arity: (v as any).arity,
-          lazyArgs: (v as any).lazyArgs,
-        } as SerializedVal;
-      case "Cont":
+          tag: "Dist",
+          support: ((v as any).support ?? []).map((it: any) => ({ v: serializeVal(it.v), w: it.w })),
+          normalized: (v as any).normalized,
+          meta: (v as any).meta,
+        };
+      case "Meaning": {
+        const mv: any = v as any;
         return {
-          tag: "Cont",
-          hid: (v as any).hid,
-          boundaryIndex: (v as any).boundaryIndex,
-          resumption: serializeResumption((v as any).resumption),
-        } as SerializedVal;
-      case "Ctx":
-        return { tag: "Ctx", ctxId: collectCtx((v as any).ctx) } as SerializedVal;
+          tag: "Meaning",
+          denotation: mv.denotation !== undefined ? serializeVal(mv.denotation as any) : undefined,
+          residual: mv.residual !== undefined ? serializeVal(mv.residual as any) : undefined,
+          rewrite: mv.rewrite !== undefined ? serializeVal(mv.rewrite as any) : undefined,
+          invariants: mv.invariants !== undefined ? serializeVal(mv.invariants as any) : undefined,
+          effects: mv.effects !== undefined ? serializeVal(mv.effects as any) : undefined,
+          cost: mv.cost !== undefined ? serializeVal(mv.cost as any) : undefined,
+          paths: mv.paths !== undefined ? serializeVal(mv.paths as any) : undefined,
+          deps: mv.deps !== undefined ? serializeVal(mv.deps as any) : undefined,
+          memo: mv.memo !== undefined ? serializeVal(mv.memo as any) : undefined,
+          obligation: mv.obligation !== undefined ? serializeVal(mv.obligation as any) : undefined,
+          obligations: mv.obligations,
+          evidence: mv.evidence,
+          confidence: mv.confidence,
+          trace: mv.trace !== undefined ? serializeVal(mv.trace as any) : undefined,
+          adoptEnvRef: mv.adoptEnvRef,
+          adoptStateRef: mv.adoptStateRef,
+        };
+      }
+      case "Profile":
+        return { tag: "Profile", profileId: (v as any).profileId, profile: serializeProfile((v as any).profile) };
+      case "Ctx": {
+        const id = collectCtx((v as any).ctx);
+        return { tag: "Ctx", ctxId: id };
+      }
       case "Module":
         return {
           tag: "Module",
@@ -375,355 +313,293 @@ export function serializeState(state: State): SerializedState {
           sealedCtxId: collectCtx((v as any).sealedCtx),
           exports: Array.from((v as any).exports ?? []),
           meta: (v as any).meta,
-        } as SerializedVal;
+        };
       case "ReceiptRef":
-        return { tag: "ReceiptRef", rid: (v as any).rid, kind: (v as any).kind } as SerializedVal;
+        return { tag: "ReceiptRef", rid: (v as any).rid, kind: (v as any).kind };
       case "ConnRef":
-        return { tag: "ConnRef", id: (v as any).id, netId: (v as any).netId, name: (v as any).name } as SerializedVal;
+        return { tag: "ConnRef", id: (v as any).id, netId: (v as any).netId, name: (v as any).name };
       case "NetRef":
-        return { tag: "NetRef", id: (v as any).id, name: (v as any).name } as SerializedVal;
+        return { tag: "NetRef", id: (v as any).id, name: (v as any).name };
       case "Explanation":
-        return serializeExplanation(v as any);
+        return {
+          tag: "Explanation",
+          kind: (v as any).kind,
+          conn: (v as any).conn ? serializeVal((v as any).conn) : undefined,
+          valueHash: (v as any).valueHash,
+          because: (v as any).because ? serializeVal((v as any).because) : undefined,
+          rule: (v as any).rule,
+          deps: (v as any).deps ? (v as any).deps.map((d: any) => serializeVal(d)) : undefined,
+          left: (v as any).left ? serializeVal((v as any).left) : undefined,
+          right: (v as any).right ? serializeVal((v as any).right) : undefined,
+          message: (v as any).message,
+          op: (v as any).op,
+          reason: (v as any).reason,
+          profile: (v as any).profile,
+        };
       case "Contradiction":
         return {
           tag: "Contradiction",
-          explanation: serializeVal((v as any).explanation as Val),
+          explanation: serializeVal((v as any).explanation),
           constraintId: (v as any).constraintId,
           netId: (v as any).netId,
-        } as SerializedVal;
-      case "Condition":
-        return serializeCondition(v as ConditionVal);
+        };
       case "Fiber":
       case "Mutex":
       case "IVar":
       case "Channel":
       case "Actor":
+      case "Promise":
       case "GenericRegistry":
+      case "IR":
       case "Budget":
       case "CostEstimate":
-        return v as SerializedVal;
-      case "Profile":
-        return { tag: "Profile", profileId: (v as any).profileId, profile: (v as any).profile as Profile } as SerializedVal;
+      case "Stream":
+      case "Result":
       case "GenericMiss":
         return {
-          tag: "GenericMiss",
-          op: (v as any).op,
-          signature: (v as any).signature,
-          argsPreview: (v as any).argsPreview.map(serializeVal),
-          registryId: (v as any).registryId,
-          profileName: (v as any).profileName,
-        } as SerializedVal;
-      case "Promise":
-        return { tag: "Promise", id: (v as any).id, label: (v as any).label } as SerializedVal;
-      case "Stream":
-        return {
-          tag: "Stream",
-          isEmpty: (v as any).isEmpty,
-          head: (v as any).head ? serializeVal((v as any).head) : undefined,
-          tail: (v as any).tail ? serializeVal((v as any).tail) : undefined,
-        } as SerializedVal;
-      case "IR":
-        return {
-          tag: "IR",
-          form: (v as any).form,
-          digest: (v as any).digest,
-          irRef: (v as any).irRef,
-          label: (v as any).label,
-        } as SerializedVal;
-      case "Result":
-        return {
-          tag: "Result",
-          kind: (v as any).kind,
-          solution: (v as any).solution ? serializeVal((v as any).solution) : undefined,
-          remaining: (v as any).remaining ? serializeVal((v as any).remaining) : undefined,
-          reason: (v as any).reason,
-          cost: (v as any).cost,
+          ...(v as any),
+          head: (v as any).head ? serializeVal((v as any).head) : (v as any).head,
+          tail: (v as any).tail ? serializeVal((v as any).tail) : (v as any).tail,
+          solution: (v as any).solution ? serializeVal((v as any).solution) : (v as any).solution,
+          remaining: (v as any).remaining ? serializeVal((v as any).remaining) : (v as any).remaining,
         } as SerializedVal;
       case "FactStore":
         return {
           tag: "FactStore",
-          factsEntries: Array.from((v as any).facts.entries()).map(([k, val]: [string, Val]) => [k, serializeVal(val)]),
-        } as SerializedVal;
-      case "Meaning":
-        return serializeMeaning(v as MeaningVal);
+          factsEntries: Array.from(((v as any).facts ?? new Map()).entries()).map(([k, val]) => [k, serializeVal(val as any)]),
+        };
+      case "Condition":
+        return serializeCondition(v as ConditionVal);
+      case "Cont":
+        return {
+          tag: "Cont",
+          hid: (v as any).hid,
+          boundaryIndex: (v as any).boundaryIndex,
+          resumption: { rid: (v as any).resumption.rid, baseState: serializeState((v as any).resumption.base) },
+        };
       case "Solver":
-        return { tag: "Solver", name: (v as any).name } as SerializedVal;
-      default:
-        throw new Error(`serializeVal: unhandled tag ${(v as any).tag}`);
+        return { tag: "Solver", name: (v as any).name };
+      default: {
+        const copy: any = {};
+        for (const [key, val] of Object.entries(v as any)) {
+          if (typeof val === "function") continue;
+          if (val instanceof Map) {
+            copy[key] = Array.from(val.entries());
+          } else if (val instanceof Set) {
+            copy[key] = Array.from(val);
+          } else {
+            copy[key] = val;
+          }
+        }
+        copy.tag = (v as any).tag ?? "Unknown";
+        return copy as SerializedVal;
+      }
     }
   }
 
-  const controlNode: Control | undefined = (state as any).control ?? (state as any).ctrl;
-  const control: SerializedControl = controlNode?.tag === "Expr"
-    ? { tag: "Expr", e: (controlNode as any).e }
-    : { tag: "Val", v: serializeVal((controlNode as any)?.v ?? { tag: "Unit" } as Val) };
+  function serializeFrame(f: Frame): SerializedFrame {
+    switch (f.tag) {
+      case "KIf":
+        return { tag: "KIf", conseq: (f as any).conseq, alt: (f as any).alt, envId: collectCtx((f as any).env) };
+      case "KBegin":
+        return { tag: "KBegin", rest: (f as any).rest, envId: collectCtx((f as any).env) };
+      case "KDefine":
+        return { tag: "KDefine", name: (f as any).name, envId: collectCtx((f as any).env) };
+      case "KSet":
+        return { tag: "KSet", name: (f as any).name, envId: collectCtx((f as any).env) };
+      case "KAppFun":
+        return { tag: "KAppFun", args: (f as any).args, envId: collectCtx((f as any).env) };
+      case "KAppArg":
+        return {
+          tag: "KAppArg",
+          fnVal: serializeVal((f as any).fnVal),
+          pending: (f as any).pending,
+          acc: ((f as any).acc ?? []).map(serializeVal),
+          envId: collectCtx((f as any).env),
+        };
+      case "KAppArgLazy":
+        return {
+          tag: "KAppArgLazy",
+          fnVal: serializeVal((f as any).fnVal),
+          pending: (f as any).pending,
+          acc: ((f as any).acc ?? []).map((it: any) => ({ idx: it.idx, val: serializeVal(it.val) })),
+          envId: collectCtx((f as any).env),
+          totalArgs: (f as any).totalArgs,
+          currentIdx: (f as any).currentIdx,
+        };
+      case "KCall":
+        return { tag: "KCall", savedEnvId: collectCtx((f as any).savedEnv) };
+      case "KEffect":
+        return {
+          tag: "KEffect",
+          op: (f as any).op,
+          pending: (f as any).pending,
+          acc: ((f as any).acc ?? []).map(serializeVal),
+          envId: collectCtx((f as any).env),
+        };
+      case "KHandleBoundary":
+        return {
+          tag: "KHandleBoundary",
+          hid: (f as any).hid,
+          savedHandlersDepth: (f as any).savedHandlersDepth,
+          resumeTo: (f as any).resumeTo
+            ? { kont: (f as any).resumeTo.kont.map(serializeFrame), handlersDepth: (f as any).resumeTo.handlersDepth }
+            : undefined,
+        };
+      case "KHandleReturn":
+        return {
+          tag: "KHandleReturn",
+          mode: (f as any).mode,
+          hid: (f as any).hid,
+          targetKont: (f as any).targetKont.map(serializeFrame),
+          targetHandlersDepth: (f as any).targetHandlersDepth,
+          savedHandlersDepth: (f as any).savedHandlersDepth,
+        };
+      case "KPrompt":
+        return {
+          tag: "KPrompt",
+          promptTag: serializeVal((f as any).promptTag),
+          handler: serializeVal((f as any).handler),
+          envId: collectCtx((f as any).env),
+          savedKont: (f as any).savedKont.map(serializeFrame),
+          savedHandlersDepth: (f as any).savedHandlersDepth,
+        };
+      case "KMatch":
+        return { tag: "KMatch", clauses: (f as any).clauses, envId: collectCtx((f as any).env) };
+      case "KOracleLambda":
+        return { tag: "KOracleLambda", params: (f as any).params, envId: collectCtx((f as any).env) };
+      case "KBind":
+        return { tag: "KBind", fn: serializeVal((f as any).fn), envId: collectCtx((f as any).env) };
+      case "KHandlerBind":
+        return {
+          tag: "KHandlerBind",
+          handlers: ((f as any).handlers ?? []).map((h: any) => ({
+            type: (h.type as any)?.toString?.() ?? h.type,
+            handler: serializeVal(h.handler),
+          })),
+        };
+      case "KRestartBind":
+        return {
+          tag: "KRestartBind",
+          restarts: ((f as any).restarts ?? []).map(serializeRestart),
+          savedKont: (f as any).savedKont.map(serializeFrame),
+          envId: collectCtx((f as any).env),
+          storeEntries: serializeStore((f as any).store),
+          handlers: ((f as any).handlers ?? []).map(serializeHandler),
+        };
+      case "KSignaling":
+        return { tag: "KSignaling", condition: serializeVal((f as any).condition), required: (f as any).required };
+      default:
+        return f as any;
+    }
+  }
 
-  const envId = state.env && isCtx(state.env) ? collectCtx(state.env) : null;
+  function serializeHandler(h: HandlerFrame): SerializedHandlerFrame {
+    return {
+      hid: (h as any).hid,
+      envId: collectCtx((h as any).env),
+      on: Array.from(((h as any).on ?? new Map()).entries()),
+      ret: (h as any).ret,
+      fin: (h as any).fin,
+    };
+  }
+
+  const control: SerializedControl =
+    controlInput.tag === "Expr"
+      ? { tag: "Expr", e: (controlInput as any).e }
+      : { tag: "Val", v: serializeVal((controlInput as any).v) };
+
+  const envId = state.env ? collectCtx(state.env as Ctx) : "null";
+  const storeEntries = serializeStore(state.store);
 
   return {
     control,
     envId,
-    storeEntries: serializeStore(state.store),
+    storeEntries,
+    storeNext: (state.store as any)?.next ?? storeEntries.length,
     kont: (state.kont ?? []).map(serializeFrame),
     handlers: (state.handlers ?? []).map(serializeHandler),
     ctxTable,
+    profile: serializeProfile((state as any).profile),
+    budget: (state as any).budget ? { ...(state as any).budget } : undefined,
+    sec: (state as any).sec ? { caps: (state as any).sec.caps ? Array.from((state as any).sec.caps) : undefined } : undefined,
   };
 }
 
-export function deserializeState(serialized: SerializedState, nativeRegistry: Map<string, Val>): State {
+export function deserializeState(s: SerializedState, nativeRegistry: Map<string, Val>): State {
   const ctxInstances: Record<string, Ctx> = {};
 
-  function rebuildCtx(id: string): Ctx {
+  function rebuildCtx(id: string | null | undefined): Ctx | undefined {
+    if (!id || id === "null") return undefined;
     if (ctxInstances[id]) return ctxInstances[id];
-    const ser = serialized.ctxTable[id];
-    if (!ser) throw new Error(`deserializeState: missing ctx ${id}`);
-
+    const ser = s.ctxTable[id];
+    if (!ser) {
+      throw new Error(`Missing ctx in table: ${id}`);
+    }
     const ctx: Ctx = {
       tag: "Ctx",
       cid: ser.id,
       parent: ser.parentId ? rebuildCtx(ser.parentId) : undefined,
       frame: new Map(ser.frameEntries),
       profile: ser.profile,
-      caps: ser.caps as CapSet,
+      caps: new Set(ser.caps) as any,
       budgets: ser.budgets as any,
       constraints: ser.constraints as any,
-      sealed: !!ser.sealed,
+      sealed: ser.sealed,
       evidence: ser.evidence as any,
     };
-
     ctxInstances[id] = ctx;
     return ctx;
   }
 
-  function deserializeStore(entries: Array<[number, SerializedVal]>): Store {
+  function deserializeStore(entries: [number, SerializedVal][], storeNext?: number): Store {
     const cells = new Map<number, Val>();
-    let next = 0;
+    let max = -1;
     for (const [addr, val] of entries) {
       cells.set(addr, deserializeVal(val));
-      next = Math.max(next, addr + 1);
+      if (addr > max) max = addr;
     }
-    return new COWStore(next, cells);
+    const next = storeNext !== undefined ? storeNext : max + 1;
+    return new COWStore(next < 0 ? 0 : next, cells);
   }
 
-  function deserializeHandler(h: SerializedHandlerFrame): HandlerFrame {
+  function deserializeRestart(r: SerializedRestart): RestartPoint {
     return {
-      hid: h.hid,
-      env: rebuildCtx(h.envId),
-      on: new Map(h.on),
-      ret: h.ret,
-      fin: h.fin,
-    };
+      name: Symbol.for(r.name ?? "restart"),
+      description: r.description,
+      kont: (r.kont ?? []).map(deserializeFrame),
+      env: rebuildCtx(r.envId) as any,
+      store: deserializeStore(r.storeEntries ?? []),
+      handlers: (r.handlers ?? []).map(deserializeHandler),
+    } as any;
   }
 
-  function deserializeResumption(sr: SerializedResumption): Resumption {
-    const base = deserializeState(sr.baseState, nativeRegistry);
-    return {
-      rid: sr.rid,
-      base,
-      invoke: (v: Val) => ({ ...base, control: { tag: "Val", v } }),
-      digest: () => JSON.stringify({
-        rid: sr.rid,
-        store: (base.store as any)?.digest?.(),
-        kontDepth: base.kont.length,
-        handlersDepth: base.handlers.length,
-      }),
-    };
-  }
-
-  function deserializeFrame(f: SerializedFrame): Frame {
-    switch (f.tag) {
-      case "KIf":
-        return { tag: "KIf", conseq: f.conseq as Expr, alt: f.alt as Expr, env: rebuildCtx(f.envId as string) };
-      case "KBegin":
-        return { tag: "KBegin", rest: f.rest as Expr[], env: rebuildCtx(f.envId as string) };
-      case "KDefine":
-        return { tag: "KDefine", name: f.name as string, env: rebuildCtx(f.envId as string) };
-      case "KSet":
-        return { tag: "KSet", name: f.name as string, env: rebuildCtx(f.envId as string) };
-      case "KAppFun":
-        return { tag: "KAppFun", args: f.args as Expr[], env: rebuildCtx(f.envId as string) };
-      case "KAppArg":
-        return {
-          tag: "KAppArg",
-          fnVal: deserializeVal(f.fnVal as SerializedVal),
-          pending: f.pending as Expr[],
-          acc: (f.acc as SerializedVal[]).map(deserializeVal),
-          env: rebuildCtx(f.envId as string),
-        };
-      case "KAppArgLazy":
-        return {
-          tag: "KAppArgLazy",
-          fnVal: deserializeVal(f.fnVal as SerializedVal),
-          pending: f.pending as Array<{ expr: Expr; idx: number }>,
-          acc: (f.acc as Array<{ idx: number; val: SerializedVal }>).map(a => ({ idx: a.idx, val: deserializeVal(a.val) })),
-          env: rebuildCtx(f.envId as string),
-          totalArgs: f.totalArgs as number,
-          currentIdx: f.currentIdx as number,
-        };
-      case "KCall":
-        return { tag: "KCall", savedEnv: rebuildCtx(f.savedEnvId as string) };
-      case "KEffect":
-        return {
-          tag: "KEffect",
-          op: f.op as string,
-          pending: f.pending as Expr[],
-          acc: (f.acc as SerializedVal[]).map(deserializeVal),
-          env: rebuildCtx(f.envId as string),
-        };
-      case "KHandleBoundary":
-        return {
-          tag: "KHandleBoundary",
-          hid: f.hid as string,
-          savedHandlersDepth: f.savedHandlersDepth as number,
-          resumeTo: f.resumeTo
-            ? {
-              kont: (f.resumeTo as any).kont.map(deserializeFrame),
-              handlersDepth: (f.resumeTo as any).handlersDepth as number,
-            }
-            : undefined,
-        };
-      case "KHandleReturn":
-        return {
-          tag: "KHandleReturn",
-          mode: f.mode as "exit" | "resume",
-          hid: f.hid as string,
-          targetKont: (f.targetKont as SerializedFrame[]).map(deserializeFrame),
-          targetHandlersDepth: f.targetHandlersDepth as number,
-          savedHandlersDepth: f.savedHandlersDepth as number,
-        };
-      case "KPrompt":
-        return {
-          tag: "KPrompt",
-          promptTag: deserializeVal(f.promptTag as SerializedVal),
-          handler: deserializeVal(f.handler as SerializedVal),
-          env: rebuildCtx(f.envId as string),
-          savedKont: (f.savedKont as SerializedFrame[]).map(deserializeFrame),
-          savedHandlersDepth: f.savedHandlersDepth as number,
-        };
-      case "KMatch":
-        return { tag: "KMatch", clauses: f.clauses as Array<{ pat: Pattern; body: Expr }>, env: rebuildCtx(f.envId as string) };
-      case "KOracleLambda":
-        return { tag: "KOracleLambda", params: f.params as string[], env: rebuildCtx(f.envId as string) };
-      case "KBind":
-        return { tag: "KBind", fn: deserializeVal(f.fn as SerializedVal), env: rebuildCtx(f.envId as string) };
-      case "KHandlerBind":
-        return {
-          tag: "KHandlerBind",
-          handlers: (f.handlers as any[]).map(h => ({
-            type: (h as any).type === "*" ? "*" : Symbol.for((h as any).type),
-            handler: deserializeVal((h as any).handler),
-          })) as ConditionHandler[],
-        };
-      case "KRestartBind":
-        return {
-          tag: "KRestartBind",
-          restarts: (f.restarts as any[]).map(r => ({
-            name: Symbol.for((r as any).name),
-            fn: deserializeVal((r as any).fn),
-            description: (r as any).description,
-          })) as RestartBinding[],
-          savedKont: (f.savedKont as SerializedFrame[]).map(deserializeFrame),
-          env: rebuildCtx(f.envId as string),
-          store: deserializeStore(f.storeEntries as Array<[number, SerializedVal]>),
-          handlers: (f.handlers as SerializedHandlerFrame[]).map(deserializeHandler),
-        };
-      case "KSignaling":
-        return { tag: "KSignaling", condition: deserializeVal(f.condition as SerializedVal) as any, required: !!f.required };
-      default:
-        throw new Error(`deserializeFrame: unhandled tag ${(f as any).tag}`);
-    }
-  }
-
-  function deserializeMeaning(m: any): MeaningVal {
-    const deserializeIfVal = (v: unknown) => (v && typeof v === "object" && (v as any).tag ? deserializeVal(v as SerializedVal) : v);
-    const trace = Array.isArray(m.trace)
-      ? (m.trace as RewriteStep[]).map(step => ({
-        ...step,
-        before: deserializeIfVal(step.before) as any,
-        after: deserializeIfVal(step.after) as any,
-      }))
-      : deserializeIfVal(m.trace);
-
-    return {
-      tag: "Meaning",
-      denotation: deserializeIfVal(m.denotation) as any,
-      residual: deserializeIfVal(m.residual) as any,
-      rewrite: deserializeIfVal(m.rewrite) as any,
-      invariants: deserializeIfVal(m.invariants) as any,
-      effects: deserializeIfVal(m.effects) as any,
-      cost: deserializeIfVal(m.cost) as any,
-      paths: deserializeIfVal(m.paths) as any,
-      deps: deserializeIfVal(m.deps) as any,
-      memo: deserializeIfVal(m.memo) as any,
-      obligation: deserializeIfVal(m.obligation) as any,
-      obligations: (m.obligations as Obligation[] | undefined)?.map(o => ({
-        ...o,
-        domain: deserializeIfVal((o as any).domain) as any,
-      })),
-      evidence: m.evidence as any,
-      confidence: m.confidence as number | undefined,
-      trace: trace as any,
-      adoptEnvRef: m.adoptEnvRef,
-      adoptStateRef: m.adoptStateRef,
-    } as MeaningVal;
-  }
-
-  function deserializeExplanation(expl: any): Val {
-    if (!expl || expl.tag !== "Explanation") return expl as Val;
-    if (expl.kind === "assumption") {
-      return {
-        tag: "Explanation",
-        kind: "assumption",
-        conn: deserializeVal(expl.conn as SerializedVal),
-        valueHash: expl.valueHash,
-        because: deserializeVal(expl.because as SerializedVal),
-      } as Val;
-    }
-    if (expl.kind === "derived") {
-      return {
-        tag: "Explanation",
-        kind: "derived",
-        conn: deserializeVal(expl.conn as SerializedVal),
-        valueHash: expl.valueHash,
-        rule: expl.rule,
-        deps: (expl.deps ?? []).map((d: any) => deserializeExplanation(d)) as any,
-      } as Val;
-    }
-    if (expl.kind === "conflict") {
-      return {
-        tag: "Explanation",
-        kind: "conflict",
-        conn: deserializeVal(expl.conn as SerializedVal),
-        left: deserializeExplanation(expl.left),
-        right: deserializeExplanation(expl.right),
-        message: expl.message,
-      } as Val;
-    }
-    if (expl.kind === "denied") {
-      return { tag: "Explanation", kind: "denied", op: expl.op, reason: expl.reason, profile: expl.profile } as Val;
-    }
-    return expl as Val;
-  }
-
-  function deserializeCondition(cond: any): ConditionVal {
+  function deserializeCondition(v: any): ConditionVal {
     return {
       tag: "Condition",
-      type: cond.type === "*" ? Symbol.for("*") : Symbol.for(cond.type ?? ""),
-      message: cond.message,
-      data: deserializeVal(cond.data as SerializedVal),
-      restarts: (cond.restarts ?? []).map((r: any) => ({
-        name: Symbol.for(r.name ?? ""),
-        description: r.description,
-        kont: (r.kont as SerializedFrame[]).map(deserializeFrame),
-        env: rebuildCtx(r.envId as string),
-        store: deserializeStore(r.storeEntries as Array<[number, SerializedVal]>),
-        handlers: (r.handlers as SerializedHandlerFrame[]).map(deserializeHandler),
-      })) as RestartPoint[],
-    } as ConditionVal;
+      type: Symbol.for(v.kind ?? "condition"),
+      message: v.message ?? "",
+      data: v.payload ? deserializeVal(v.payload) : ({ tag: "Unit" } as Val),
+      restarts: (v.restarts ?? []).map(deserializeRestart),
+    } as any;
+  }
+
+  function restoreNative(name: string, arity: number | "variadic", lazyArgs?: number[]): Val {
+    const native = nativeRegistry.get(name);
+    if (native) return native;
+    return {
+      tag: "Native",
+      name,
+      arity,
+      lazyArgs,
+      fn: () => {
+        throw new Error(`Native function not found: ${name}`);
+      },
+    } as any;
   }
 
   function deserializeVal(v: SerializedVal): Val {
-    switch (v.tag) {
+    switch ((v as any).tag) {
       case "Unit":
       case "Uninit":
       case "Bool":
@@ -731,173 +607,316 @@ export function deserializeState(serialized: SerializedState, nativeRegistry: Ma
       case "Str":
       case "Sym":
       case "Err":
-        return v as unknown as Val;
+        return v as Val;
       case "Int":
-        return { tag: "Int", value: BigInt(v.value as string) } as Val;
+        return { tag: "Int", value: BigInt((v as any).value) } as any;
       case "Pair":
-        return { tag: "Pair", car: deserializeVal(v.car as SerializedVal), cdr: deserializeVal(v.cdr as SerializedVal) } as Val;
+        return { tag: "Pair", car: deserializeVal((v as any).car), cdr: deserializeVal((v as any).cdr) } as Val;
       case "Vector":
-        return { tag: "Vector", items: (v.items as SerializedVal[]).map(deserializeVal) } as Val;
+        return { tag: "Vector", items: ((v as any).items ?? []).map(deserializeVal) } as Val;
       case "List":
-        return { tag: "List", elements: (v.elements as SerializedVal[]).map(deserializeVal) } as Val;
+        return { tag: "List", elements: ((v as any).elements ?? []).map(deserializeVal) } as Val;
       case "Map":
-        return { tag: "Map", entries: (v.entries as Array<[SerializedVal, SerializedVal]>).map(([k, val]) => [deserializeVal(k), deserializeVal(val)]) } as Val;
-      case "Tagged":
-        return { tag: "Tagged", typeTag: v.typeTag as string, payload: deserializeVal(v.payload as SerializedVal) } as Val;
-      case "Syntax":
-        return { tag: "Syntax", stx: v.stx } as Val;
-      case "Dist":
         return {
-          tag: "Dist",
-          support: (v.support as Array<{ v: SerializedVal; w: number }>).map(it => ({ v: deserializeVal(it.v), w: it.w })),
-          normalized: v.normalized as boolean | undefined,
-          meta: v.meta as any,
-        } as Val;
+          tag: "Map",
+          entries: ((v as any).entries ?? []).map(([k, val]: [SerializedVal, SerializedVal]) => [deserializeVal(k), deserializeVal(val)]),
+        } as any;
+      case "Tagged":
+        return { tag: "Tagged", typeTag: (v as any).typeTag, payload: deserializeVal((v as any).payload) } as any;
+      case "Syntax":
+        return { tag: "Syntax", stx: (v as any).stx } as any;
       case "Closure":
-        return { tag: "Closure", params: v.params as string[], body: v.body as Expr, env: rebuildCtx(v.envId as string) } as Val;
+        return {
+          tag: "Closure",
+          params: (v as any).params,
+          body: (v as any).body,
+          env: rebuildCtx((v as any).envId) as any,
+        } as any;
+      case "Native":
+        return restoreNative((v as any).name, (v as any).arity, (v as any).lazyArgs);
       case "OracleProc":
         return {
           tag: "OracleProc",
-          params: v.params as string[],
-          spec: deserializeVal(v.spec as SerializedVal),
-          env: rebuildCtx(v.envId as string),
-          policyDigest: v.policyDigest as string | undefined,
-        } as Val;
+          params: (v as any).params,
+          spec: deserializeVal((v as any).spec),
+          env: rebuildCtx((v as any).envId) as any,
+          policyDigest: (v as any).policyDigest,
+        } as any;
       case "Continuation":
         return {
           tag: "Continuation",
-          kont: (v.kont as SerializedFrame[]).map(deserializeFrame),
-          env: rebuildCtx(v.envId as string),
-          store: deserializeStore(v.storeEntries as Array<[number, SerializedVal]>),
-          handlers: (v.handlers as SerializedHandlerFrame[]).map(deserializeHandler),
-        } as Val;
+          kont: ((v as any).kont ?? []).map(deserializeFrame),
+          env: rebuildCtx((v as any).envId) as any,
+          store: deserializeStore((v as any).storeEntries ?? []),
+          handlers: ((v as any).handlers ?? []).map(deserializeHandler),
+        } as any;
       case "Machine":
         return {
           tag: "Machine",
-          state: deserializeState(v.state as SerializedState, nativeRegistry),
-          label: v.label as string | undefined,
-          stepCount: (v.stepCount as number) ?? 0,
-          breakOnOps: v.breakOnOps ? new Set(v.breakOnOps as string[]) : undefined,
-          breakOnPatterns: v.breakOnPatterns as string[] | undefined,
-          isDone: !!v.isDone,
-          parentId: v.parentId as string | undefined,
-          machineId: v.machineId as string,
+          state: deserializeState((v as any).state, nativeRegistry),
+          label: (v as any).label,
+          stepCount: (v as any).stepCount ?? 0,
+          breakOnOps: (v as any).breakOnOps ? new Set((v as any).breakOnOps) : undefined,
+          breakOnPatterns: (v as any).breakOnPatterns,
+          lastOutcome: (v as any).lastOutcome,
+          isDone: !!(v as any).isDone,
+          machineId: (v as any).machineId,
+          parentId: (v as any).parentId,
         } as any;
-      case "Native": {
-        const native = nativeRegistry.get(v.name as string);
-        if (!native) {
-          throw new Error(`deserializeState: missing native '${v.name as string}'`);
-        }
-        return native;
-      }
-      case "Cont":
+      case "Dist":
         return {
-          tag: "Cont",
-          hid: v.hid as string,
-          boundaryIndex: v.boundaryIndex as number,
-          resumption: deserializeResumption(v.resumption as SerializedResumption),
+          tag: "Dist",
+          support: ((v as any).support ?? []).map((it: any) => ({ v: deserializeVal(it.v), w: it.w })),
+          normalized: (v as any).normalized,
+          meta: (v as any).meta,
         } as any;
-      case "Ctx":
-        return { tag: "Ctx", ctx: rebuildCtx(v.ctxId as string) } as any;
+      case "Meaning": {
+        const mv: any = v;
+        return {
+          tag: "Meaning",
+          denotation: mv.denotation !== undefined ? deserializeVal(mv.denotation as any) : undefined,
+          residual: mv.residual !== undefined ? deserializeVal(mv.residual as any) : undefined,
+          rewrite: mv.rewrite !== undefined ? deserializeVal(mv.rewrite as any) : undefined,
+          invariants: mv.invariants !== undefined ? deserializeVal(mv.invariants as any) : undefined,
+          effects: mv.effects !== undefined ? deserializeVal(mv.effects as any) : undefined,
+          cost: mv.cost !== undefined ? deserializeVal(mv.cost as any) : undefined,
+          paths: mv.paths !== undefined ? deserializeVal(mv.paths as any) : undefined,
+          deps: mv.deps !== undefined ? deserializeVal(mv.deps as any) : undefined,
+          memo: mv.memo !== undefined ? deserializeVal(mv.memo as any) : undefined,
+          obligation: mv.obligation !== undefined ? deserializeVal(mv.obligation as any) : undefined,
+          obligations: mv.obligations,
+          evidence: mv.evidence,
+          confidence: mv.confidence,
+          trace: mv.trace !== undefined ? deserializeVal(mv.trace as any) : undefined,
+          adoptEnvRef: mv.adoptEnvRef,
+          adoptStateRef: mv.adoptStateRef,
+        } as any;
+      }
+      case "Profile":
+        return { tag: "Profile", profileId: (v as any).profileId, profile: deserializeProfile((v as any).profile) } as any;
+      case "Ctx": {
+        return { tag: "Ctx", ctx: rebuildCtx((v as any).ctxId) } as any;
+      }
       case "Module":
         return {
           tag: "Module",
-          moduleId: v.moduleId as Hash,
-          sealedCtx: rebuildCtx(v.sealedCtxId as string),
-          exports: new Set(v.exports as string[]),
-          meta: v.meta as any,
+          moduleId: (v as any).moduleId,
+          sealedCtx: rebuildCtx((v as any).sealedCtxId) as any,
+          exports: new Set((v as any).exports ?? []),
+          meta: (v as any).meta,
         } as any;
       case "ReceiptRef":
-        return { tag: "ReceiptRef", rid: v.rid as Hash, kind: v.kind as any } as any;
+        return { tag: "ReceiptRef", rid: (v as any).rid, kind: (v as any).kind } as any;
       case "ConnRef":
-        return { tag: "ConnRef", id: v.id as string, netId: v.netId as string, name: v.name as string | undefined } as any;
+        return { tag: "ConnRef", id: (v as any).id, netId: (v as any).netId, name: (v as any).name } as any;
       case "NetRef":
-        return { tag: "NetRef", id: v.id as string, name: v.name as string | undefined } as any;
+        return { tag: "NetRef", id: (v as any).id, name: (v as any).name } as any;
       case "Explanation":
-        return deserializeExplanation(v);
+        return {
+          tag: "Explanation",
+          kind: (v as any).kind,
+          conn: (v as any).conn ? deserializeVal((v as any).conn) : undefined,
+          valueHash: (v as any).valueHash,
+          because: (v as any).because ? deserializeVal((v as any).because) : undefined,
+          rule: (v as any).rule,
+          deps: (v as any).deps ? (v as any).deps.map((d: any) => deserializeVal(d)) : undefined,
+          left: (v as any).left ? deserializeVal((v as any).left) : undefined,
+          right: (v as any).right ? deserializeVal((v as any).right) : undefined,
+          message: (v as any).message,
+          op: (v as any).op,
+          reason: (v as any).reason,
+          profile: (v as any).profile,
+        } as any;
       case "Contradiction":
         return {
           tag: "Contradiction",
-          explanation: deserializeVal(v.explanation as SerializedVal) as any,
-          constraintId: v.constraintId as string | undefined,
-          netId: v.netId as string | undefined,
+          explanation: deserializeVal((v as any).explanation),
+          constraintId: (v as any).constraintId,
+          netId: (v as any).netId,
         } as any;
-      case "Condition":
-        return deserializeCondition(v);
+      case "FactStore":
+        return {
+          tag: "FactStore",
+          facts: new Map(((v as any).factsEntries ?? []).map(([k, val]: [string, SerializedVal]) => [k, deserializeVal(val)])),
+        } as any;
+      case "Stream":
+        return {
+          tag: "Stream",
+          isEmpty: (v as any).isEmpty,
+          head: (v as any).head ? deserializeVal((v as any).head) : undefined,
+          tail: (v as any).tail ? deserializeVal((v as any).tail) : undefined,
+        } as any;
+      case "IR":
+      case "Budget":
+      case "CostEstimate":
       case "Fiber":
       case "Mutex":
       case "IVar":
       case "Channel":
       case "Actor":
-      case "GenericRegistry":
-      case "Budget":
-      case "CostEstimate":
-        return v as unknown as Val;
-      case "Profile":
-        return { tag: "Profile", profileId: v.profileId as string, profile: v.profile as Profile } as any;
-      case "GenericMiss":
-        return {
-          tag: "GenericMiss",
-          op: v.op as string,
-          signature: v.signature as string[],
-          argsPreview: (v.argsPreview as SerializedVal[]).map(deserializeVal),
-          registryId: v.registryId as string,
-          profileName: v.profileName as string | undefined,
-        } as any;
       case "Promise":
-        return { tag: "Promise", id: v.id as string, label: v.label as string | undefined } as any;
-      case "Stream":
-        return {
-          tag: "Stream",
-          isEmpty: !!v.isEmpty,
-          head: v.head ? deserializeVal(v.head as SerializedVal) : undefined,
-          tail: v.tail ? deserializeVal(v.tail as SerializedVal) : undefined,
-        } as any;
-      case "IR":
-        return { tag: "IR", form: v.form as any, digest: v.digest as string, irRef: v.irRef as string, label: v.label as string | undefined } as any;
+      case "GenericRegistry":
+      case "GenericMiss":
       case "Result":
         return {
-          tag: "Result",
-          kind: v.kind as string,
-          solution: v.solution ? deserializeVal(v.solution as SerializedVal) : undefined,
-          remaining: v.remaining ? deserializeVal(v.remaining as SerializedVal) : undefined,
-          reason: v.reason as string | undefined,
-          cost: v.cost as number,
+          ...(v as any),
+          head: (v as any).head ? deserializeVal((v as any).head) : (v as any).head,
+          tail: (v as any).tail ? deserializeVal((v as any).tail) : (v as any).tail,
+          solution: (v as any).solution ? deserializeVal((v as any).solution) : (v as any).solution,
+          remaining: (v as any).remaining ? deserializeVal((v as any).remaining) : (v as any).remaining,
         } as any;
-      case "FactStore":
+      case "Condition":
+        return deserializeCondition(v);
+      case "Cont": {
+        const base = deserializeState((v as any).resumption.baseState, nativeRegistry);
         return {
-          tag: "FactStore",
-          facts: new Map<string, Val>((v.factsEntries as Array<[string, SerializedVal]>).map(([k, val]) => [k, deserializeVal(val)])),
+          tag: "Cont",
+          hid: (v as any).hid,
+          boundaryIndex: (v as any).boundaryIndex,
+          resumption: {
+            rid: (v as any).resumption.rid,
+            base,
+            invoke: (val: Val) => {
+              const nextStore = (base.store as any)?.snapshot ? (base.store as any).snapshot() : base.store;
+              const resumed: State = { ...base, control: { tag: "Val", v: val }, store: nextStore };
+              (resumed as any).ctrl = resumed.control;
+              return resumed;
+            },
+            digest: () => ((base.store as any)?.digest ? (base.store as any).digest() : String((v as any).resumption.rid)),
+          },
         } as any;
-      case "Meaning":
-        return deserializeMeaning(v);
+      }
       case "Solver":
-        return {
-          tag: "Solver",
-          name: v.name as string,
-          solve: () => {
-            throw new Error("Solver.fn not restored from serialized state");
-          },
-          estimate: () => {
-            throw new Error("Solver.fn not restored from serialized state");
-          },
-        } as SolverVal;
+        return restoreNative((v as any).name, "variadic");
       default:
-        throw new Error(`deserializeVal: unhandled tag ${(v as any).tag}`);
+        return v as any;
     }
   }
 
-  const control: Control = serialized.control.tag === "Expr"
-    ? { tag: "Expr", e: serialized.control.e }
-    : { tag: "Val", v: deserializeVal(serialized.control.v) };
+  function deserializeFrame(f: SerializedFrame): Frame {
+    switch ((f as any).tag) {
+      case "KIf":
+        return { tag: "KIf", conseq: (f as any).conseq, alt: (f as any).alt, env: rebuildCtx((f as any).envId) as any };
+      case "KBegin":
+        return { tag: "KBegin", rest: (f as any).rest, env: rebuildCtx((f as any).envId) as any };
+      case "KDefine":
+        return { tag: "KDefine", name: (f as any).name, env: rebuildCtx((f as any).envId) as any };
+      case "KSet":
+        return { tag: "KSet", name: (f as any).name, env: rebuildCtx((f as any).envId) as any };
+      case "KAppFun":
+        return { tag: "KAppFun", args: (f as any).args, env: rebuildCtx((f as any).envId) as any };
+      case "KAppArg":
+        return {
+          tag: "KAppArg",
+          fnVal: deserializeVal((f as any).fnVal),
+          pending: (f as any).pending,
+          acc: ((f as any).acc ?? []).map(deserializeVal),
+          env: rebuildCtx((f as any).envId) as any,
+        };
+      case "KAppArgLazy":
+        return {
+          tag: "KAppArgLazy",
+          fnVal: deserializeVal((f as any).fnVal),
+          pending: (f as any).pending,
+          acc: ((f as any).acc ?? []).map((it: any) => ({ idx: it.idx, val: deserializeVal(it.val) })),
+          env: rebuildCtx((f as any).envId) as any,
+          totalArgs: (f as any).totalArgs,
+          currentIdx: (f as any).currentIdx,
+        };
+      case "KCall":
+        return { tag: "KCall", savedEnv: rebuildCtx((f as any).savedEnvId) as any };
+      case "KEffect":
+        return {
+          tag: "KEffect",
+          op: (f as any).op,
+          pending: (f as any).pending,
+          acc: ((f as any).acc ?? []).map(deserializeVal),
+          env: rebuildCtx((f as any).envId) as any,
+        };
+      case "KHandleBoundary":
+        return {
+          tag: "KHandleBoundary",
+          hid: (f as any).hid,
+          savedHandlersDepth: (f as any).savedHandlersDepth,
+          resumeTo: (f as any).resumeTo
+            ? { kont: (f as any).resumeTo.kont.map(deserializeFrame), handlersDepth: (f as any).resumeTo.handlersDepth }
+            : undefined,
+        };
+      case "KHandleReturn":
+        return {
+          tag: "KHandleReturn",
+          mode: (f as any).mode,
+          hid: (f as any).hid,
+          targetKont: (f as any).targetKont.map(deserializeFrame),
+          targetHandlersDepth: (f as any).targetHandlersDepth,
+          savedHandlersDepth: (f as any).savedHandlersDepth,
+        };
+      case "KPrompt":
+        return {
+          tag: "KPrompt",
+          promptTag: deserializeVal((f as any).promptTag),
+          handler: deserializeVal((f as any).handler),
+          env: rebuildCtx((f as any).envId) as any,
+          savedKont: (f as any).savedKont.map(deserializeFrame),
+          savedHandlersDepth: (f as any).savedHandlersDepth,
+        };
+      case "KMatch":
+        return { tag: "KMatch", clauses: (f as any).clauses, env: rebuildCtx((f as any).envId) as any };
+      case "KOracleLambda":
+        return { tag: "KOracleLambda", params: (f as any).params, env: rebuildCtx((f as any).envId) as any };
+      case "KBind":
+        return { tag: "KBind", fn: deserializeVal((f as any).fn), env: rebuildCtx((f as any).envId) as any };
+      case "KHandlerBind":
+        return {
+          tag: "KHandlerBind",
+          handlers: ((f as any).handlers ?? []).map((h: any) => ({
+            type: (h as any).type === "*" ? "*" : Symbol.for((h as any).type ?? "handler"),
+            handler: deserializeVal((h as any).handler),
+          })),
+        } as any;
+      case "KRestartBind":
+        return {
+          tag: "KRestartBind",
+          restarts: ((f as any).restarts ?? []).map(deserializeRestart),
+          savedKont: (f as any).savedKont.map(deserializeFrame),
+          env: rebuildCtx((f as any).envId) as any,
+          store: deserializeStore((f as any).storeEntries ?? []),
+          handlers: ((f as any).handlers ?? []).map(deserializeHandler),
+        } as any;
+      case "KSignaling":
+        return { tag: "KSignaling", condition: deserializeVal((f as any).condition), required: (f as any).required } as any;
+      default:
+        return f as any;
+    }
+  }
 
-  const env = serialized.envId ? rebuildCtx(serialized.envId) : (undefined as any);
+  function deserializeHandler(h: SerializedHandlerFrame): HandlerFrame {
+    return {
+      hid: (h as any).hid,
+      env: rebuildCtx((h as any).envId) as any,
+      on: new Map((h as any).on ?? []),
+      ret: (h as any).ret,
+      fin: (h as any).fin,
+    } as any;
+  }
 
-  return {
+  const control: Control =
+    s.control.tag === "Expr"
+      ? { tag: "Expr", e: (s.control as any).e }
+      : { tag: "Val", v: deserializeVal((s.control as any).v) };
+
+  const env = rebuildCtx(s.envId) as any;
+  const store = deserializeStore(s.storeEntries, s.storeNext);
+  const state: State = {
     control,
-    env,
-    store: deserializeStore(serialized.storeEntries),
-    kont: (serialized.kont ?? []).map(deserializeFrame),
-    handlers: (serialized.handlers ?? []).map(deserializeHandler),
-  } as State;
+    env: env as any,
+    store,
+    kont: (s.kont ?? []).map(deserializeFrame),
+    handlers: (s.handlers ?? []).map(deserializeHandler),
+    profile: deserializeProfile(s.profile),
+    budget: s.budget as any,
+    sec: s.sec ? ({ caps: s.sec.caps ? new Set(s.sec.caps) : undefined } as any) : undefined,
+  };
+  (state as any).ctrl = control;
+  return state;
 }

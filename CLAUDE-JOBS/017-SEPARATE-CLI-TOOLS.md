@@ -1,4 +1,4 @@
-# JOB-017: Separate CLI Tools (REPL/Debugger)
+# JOB-017: Unify CLI into Single `omega` Command
 
 **Priority**: P2 - Cleanup/Architecture
 **Estimated Effort**: 1-2 days
@@ -6,140 +6,319 @@
 **Status**: NOT STARTED
 **Depends On**: None (standalone cleanup task)
 
-> **MUST READ**: [LOGISTICS.md](LOGISTICS.md) before starting - covers testing, file locations, and proof of completion requirements.
+> **MUST READ**: [LOGISTICS.md](LOGISTICS.md) before starting
+
+---
+
+## Sub-Jobs (Parallelizable)
+
+This job is split into 4 sub-jobs that can be run in parallel (except 017d):
+
+| Sub-Job | Title | Can Parallel? | Depends On |
+|---------|-------|---------------|------------|
+| [017a](./017a-FILE-LOADER-FIX.md) | Fix File Loader | ✅ Yes | None |
+| [017b](./017b-PUBLIC-API-EXTENSION.md) | Extend Public API | ✅ Yes | None |
+| [017c](./017c-MERGE-DEBUGGER-COMMANDS.md) | Merge Debugger Commands | ✅ Yes | None |
+| [017d](./017d-CLI-UNIFICATION.md) | Final Unification | ❌ No | 017a, 017b, 017c |
+
+### Run with Beads (Parallel)
+
+```bash
+cd OmegaLLM
+
+# Import features to beads
+python ../codesmith/cli.py import CLAUDE-JOBS/017-features.yaml
+
+# Run with 2 parallel workers
+python ../codesmith/cli.py run --max-workers 2
+```
+
+### Dependency Graph
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│    017a     │     │    017b     │     │    017c     │
+│ File Loader │     │ Public API  │     │ Merge Cmds  │
+└──────┬──────┘     └──────┬──────┘     └──────┬──────┘
+       │                   │                   │
+       └───────────────────┼───────────────────┘
+                           │
+                           ▼
+                    ┌─────────────┐
+                    │    017d     │
+                    │ Unification │
+                    └─────────────┘
+``` - covers testing, file locations, and proof of completion requirements.
 
 ---
 
 ## Executive Summary
 
-The OmegaLLM project has two substantial CLI tools embedded in `bin/`:
+The OmegaLLM project currently has **two CLI tools** that significantly overlap:
 
 | Tool | File | Lines | Purpose |
 |------|------|-------|---------|
-| REPL | `bin/omega-repl.ts` | ~2,233 | Interactive Lisp REPL with LLM integration |
-| Debugger | `bin/omega-debugger.ts` | ~1,198 | Step-through debugger with breakpoints, time-travel |
+| REPL | `bin/omega-repl.ts` | ~2,233 | Interactive REPL + LLM + **full debugging** |
+| Debugger | `bin/omega-debugger.ts` | ~1,198 | Step-through debugger |
 
-These tools are **tightly coupled** to `src/core/` internals through direct imports. This job:
+**Key finding**: The REPL already has full debugging built in (`:debug`, `:step`, `:run`, `:goto`, `:break`, `:trace`, `:state`, `:stack`, `:frame`). The debugger is redundant.
 
-1. **Defines a clean library API** in `src/index.ts` for external consumers
-2. **Refactors CLI tools** to use only the public API
-3. **Adds proper npm bin entries** in `package.json`
-4. **Documents CLI usage** for end users
+### What Other Languages Do
 
-### Why Separate?
+| Language | CLI Tool | Debugging |
+|----------|----------|-----------|
+| Python | `python` | `pdb.set_trace()` inside REPL |
+| Node.js | `node` | `--inspect` flag, same process |
+| Common Lisp | `sbcl` | Built into REPL |
+| GHCi | `ghci` | `:step`, `:trace`, `:break` built in |
+| Racket | `racket` | Debugger integrated |
 
-- **Testability**: Core library can be tested without CLI dependencies
-- **Bundling**: CLI tools can be bundled separately or excluded
-- **API surface**: Forces definition of what's "public" vs "internal"
-- **Maintainability**: Changes to CLI don't affect library consumers
+**Pattern**: One tool, debugging as a mode within the REPL.
 
----
+### This Job
 
-## What Already Exists
+1. **Merge** the 6 unique debugger features into the REPL
+2. **Rename** `bin/omega-repl.ts` → `bin/omega.ts`
+3. **Delete** `bin/omega-debugger.ts`
+4. **Extend** `src/index.ts` with low-level CEKS exports for the CLI
+5. **Add** proper `package.json` bin entry
 
-### bin/omega-repl.ts (2,233 lines)
-
-Full-featured REPL with:
-
-```typescript
-// Current imports - directly into core internals
-import { COWStore } from "../src/core/eval/store";
-import { RuntimeImpl } from "../src/core/effects/runtimeImpl";
-import { SnapshotRepo } from "../src/core/oracle/snapshots";
-import { InMemoryReceiptStore } from "../src/core/oracle/receipts";
-import { createOpenAIAdapter } from "../src/core/oracle/adapters";
-import { runToCompletionWithState } from "../src/core/eval/run";
-import { stepOnce } from "../src/core/eval/machineStep";
-import { compileTextToExpr } from "../src/core/pipeline/compileText";
-// ... many more
-```
-
-Features:
-- CLI args: `--session <name>`, `--file <path>`, `--cmd <expr>`, `--json`, `--verbose`
-- Session persistence to `~/.omega-sessions/`
-- LLM adapters (OpenAI, Anthropic) with tool calling
-- File loading and evaluation
-- History and tab completion
-
-### bin/omega-debugger.ts (1,198 lines)
-
-Full-featured debugger with:
-
-```typescript
-// Similar internal imports
-import { COWStore } from "../src/core/eval/store";
-import { compileTextToExpr } from "../src/core/pipeline/compileText";
-import { stepOnce } from "../src/core/eval/machineStep";
-// ... etc
-```
-
-Features:
-- Commands: `load`, `loadfile`, `step`, `continue`, `break`, `save`, `load-snapshot`, `dump`, `replay`, `goto`, `env`, `stack`
-- Breakpoints with condition expressions
-- Time-travel debugging (trace + goto)
-- State snapshots for undo/redo
-- Session persistence
-
-### Test Usage
-
-Tests **do NOT use** the CLI tools. They import core directly:
-
-```typescript
-// test/repl/debugger.spec.ts
-import { COWStore } from "../../src/core/eval/store";
-import { RuntimeImpl } from "../../src/core/effects/runtimeImpl";
-import { compileTextToExpr } from "../../src/core/pipeline/compileText";
-```
-
-This is correct behavior - tests should use the library API.
+**Result**: Single `omega` command like `python`, `node`, `ghci`.
 
 ---
 
-## Gap Analysis
+## Feature Comparison
 
-| Should Exist | Currently |
-|--------------|-----------|
-| `src/index.ts` with CLI exports | EXISTS (140 lines) but **missing** low-level CEKS machine exports |
-| `package.json` bin entries | None (has module exports, missing `"bin"`) |
-| CLI tools use public imports | Import 16+ internal paths directly |
-| `--help` documentation | Minimal |
-| Shebang + executable | Shebang exists, not executable |
+### What REPL Already Has (Debugging)
 
-### What `src/index.ts` Currently Exports (140 lines)
+```
+:debug (expr)    — load expression into debugger
+:step [N]        — execute N steps
+:run             — run to completion/breakpoint
+:goto <N>        — time-travel to step N
+:trace [s] [n]   — show execution trace
+:state           — show current debug state
+:stack           — show call stack
+:frame <N>       — inspect frame
+:break step <N>  — breakpoint at step
+:break expr <t>  — breakpoint on expression type
+:break effect <o>— breakpoint on effect
+:breaks          — list breakpoints
+:delbreak <id>   — delete breakpoint
+```
 
-High-level API for library consumers:
-- `OmegaRuntime`, `evalOmegaCode` - high-level runtime
-- `Outcome`, `Failure`, `Diagnostic` - ADTs
-- `FrameIR`, `ValueIR`, `PromptIR` - canonical IR
-- `AnthropicAdapter`, `MCPClientAdapter` - adapters
-- Governance: `Cap`, `Budget`, `Profile`
-- Provenance: `ProvenanceGraph`, `evidenceId`
+### What Debugger Has (Unique - Must Merge)
 
-### What CLI Tools Need (NOT currently exported)
+| Command | Purpose |
+|---------|---------|
+| `dump <path>` | Save full execution trace to JSON file |
+| `replay <path>` | Load and replay trace from file |
+| `save <name>` | Save named state snapshot |
+| `restore <name>` | Restore named snapshot |
+| `record on/off` | Toggle trace recording |
+| `history [n]` | Show recent step history |
 
-Low-level CEKS machine for step-through debugging:
-- `COWStore`, `Store` - copy-on-write store
-- `stepOnce`, `StepResult` - single-step execution
-- `runToCompletionWithState` - batch execution
-- `State`, `Frame`, `Env` - machine types
-- `Val`, `VUnit`, `VNum`, etc. - value constructors
-- `compileTextToExpr` - compilation
-- `RuntimeImpl` - effects runtime
-- `SnapshotRepo`, `InMemoryReceiptStore` - oracle state
-- `createOpenAIAdapter` - OpenAI (only Anthropic exported currently)
-- `installPrims` - primitive installation (in `test/helpers/`)
+These 6 commands will be added to the REPL as `:dump`, `:replay`, `:snapshot`, `:restore`, `:record`, `:history`.
+
+---
+
+## CLI Design (After Merge)
+
+### Usage
+
+```bash
+# Interactive REPL
+omega
+
+# File execution
+omega --file script.lisp
+omega script.lisp              # shorthand
+
+# Non-interactive (for agents)
+omega --cmd "(define x 42)"
+omega --session work --cmd "(+ x 1)"    # resume session
+
+# Debugging via commands (same tool)
+omega --cmd ":debug (broken-fn)"
+omega --session work --cmd ":step 5"
+omega --session work --cmd ":state"
+omega --session work --cmd ":dump trace.json"
+
+# JSON output for parsing
+omega --cmd "(+ 1 2)" --json
+# → {"result": 3, "ok": true}
+```
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--session <name>` | Named session (persists to `~/.omega-sessions/`) |
+| `--file <path>` | Load and evaluate Lisp file |
+| `--cmd <expr>` | Evaluate expression/command and exit |
+| `--json` | Output results as JSON |
+| `--verbose` | Show oracle/LLM transcripts |
+| `--help` | Show help |
+
+### Sessions (Agent-Friendly)
+
+Sessions allow agents to maintain state across invocations:
+
+```bash
+# Agent turn 1: define something
+omega --session mywork --cmd "(define factorial (lambda (n) (if (<= n 1) 1 (* n (factorial (- n 1))))))"
+
+# Agent turn 2: use it (session remembers factorial)
+omega --session mywork --cmd "(factorial 5)"
+# → 120
+
+# Agent turn 3: debug something
+omega --session mywork --cmd ":debug (factorial 3)"
+omega --session mywork --cmd ":step 10"
+omega --session mywork --cmd ":state"
+
+# Agent turn 4: dump trace for analysis
+omega --session mywork --cmd ":dump /tmp/trace.json"
+```
 
 ---
 
 ## Implementation Plan
 
-### Phase 1: Extend Public API
+### Phase 1: Merge Debugger Features into REPL
 
-**ADD** the following exports to the existing `src/index.ts` (which already has 140 lines):
+Add these commands to `bin/omega-repl.ts`:
 
 ```typescript
-// src/index.ts - ADD TO EXISTING FILE
+// Add to REPL command handling
 
+// :dump - save trace to file
+if (trimmed.startsWith(":dump ")) {
+  const filepath = trimmed.slice(6).trim();
+  if (!replState.debugTrace || replState.debugTrace.length === 0) {
+    log("No debug trace to dump. Use :debug first.");
+  } else {
+    const data = JSON.stringify({
+      code: replState.debugInitialCode,
+      trace: replState.debugTrace,
+      step: replState.debugStepCount,
+    }, null, 2);
+    fs.writeFileSync(filepath, data);
+    log(`Trace dumped to ${filepath} (${replState.debugTrace.length} steps)`);
+  }
+  return { replState, output: output.join("\n"), shouldExit };
+}
+
+// :replay - load trace from file
+if (trimmed.startsWith(":replay ")) {
+  const filepath = trimmed.slice(8).trim();
+  if (!fs.existsSync(filepath)) {
+    log(`File not found: ${filepath}`);
+  } else {
+    const data = JSON.parse(fs.readFileSync(filepath, "utf8"));
+    replState = debugLoadExpr(data.code, replState);
+    replState.debugTrace = data.trace;
+    log(`Loaded trace with ${data.trace.length} steps. Use :goto <n> to navigate.`);
+  }
+  return { replState, output: output.join("\n"), shouldExit };
+}
+
+// :snapshot - save named snapshot
+if (trimmed.startsWith(":snapshot ")) {
+  const name = trimmed.slice(10).trim();
+  // Save current debug state to replState.snapshots map
+  replState.snapshots = replState.snapshots || new Map();
+  replState.snapshots.set(name, {
+    state: cloneState(replState.debugState),
+    step: replState.debugStepCount,
+    trace: [...replState.debugTrace],
+  });
+  log(`Snapshot '${name}' saved at step ${replState.debugStepCount}`);
+  return { replState, output: output.join("\n"), shouldExit };
+}
+
+// :restore - restore named snapshot
+if (trimmed.startsWith(":restore ")) {
+  const name = trimmed.slice(9).trim();
+  const snap = replState.snapshots?.get(name);
+  if (!snap) {
+    log(`Snapshot '${name}' not found. Use :snapshots to list.`);
+  } else {
+    replState.debugState = cloneState(snap.state);
+    replState.debugStepCount = snap.step;
+    log(`Restored snapshot '${name}' at step ${snap.step}`);
+    printDebugState(replState);
+  }
+  return { replState, output: output.join("\n"), shouldExit };
+}
+
+// :snapshots - list snapshots
+if (trimmed === ":snapshots") {
+  if (!replState.snapshots || replState.snapshots.size === 0) {
+    log("No snapshots saved.");
+  } else {
+    log("Snapshots:");
+    for (const [name, snap] of replState.snapshots) {
+      log(`  ${name}: step ${snap.step}`);
+    }
+  }
+  return { replState, output: output.join("\n"), shouldExit };
+}
+
+// :record - toggle trace recording
+if (trimmed === ":record on" || trimmed === ":record off") {
+  replState.recordingEnabled = trimmed === ":record on";
+  log(`Trace recording: ${replState.recordingEnabled ? "ON" : "OFF"}`);
+  return { replState, output: output.join("\n"), shouldExit };
+}
+
+// :history - show recent step history
+if (trimmed === ":history" || trimmed.startsWith(":history ")) {
+  const parts = trimmed.split(/\s+/);
+  const count = parseInt(parts[1]) || 10;
+  if (!replState.debugTrace || replState.debugTrace.length === 0) {
+    log("No history. Use :debug first.");
+  } else {
+    const start = Math.max(0, replState.debugStepCount - count);
+    log(`History (steps ${start}-${replState.debugStepCount}):`);
+    for (let i = start; i <= replState.debugStepCount && i < replState.debugTrace.length; i++) {
+      const t = replState.debugTrace[i];
+      const marker = i === replState.debugStepCount ? " <-- current" : "";
+      log(`  [${i}] ${t.controlSummary}${marker}`);
+    }
+  }
+  return { replState, output: output.join("\n"), shouldExit };
+}
+```
+
+### Phase 2: Rename REPL to omega
+
+```bash
+git mv bin/omega-repl.ts bin/omega.ts
+```
+
+Update the file header:
+
+```typescript
+#!/usr/bin/env npx tsx
+// bin/omega.ts
+// Omega Language - Interactive REPL with debugging, LLM integration, and sessions
+//
+// Run:  npx tsx bin/omega.ts
+//       omega                       (after npm link)
+```
+
+### Phase 3: Delete Debugger
+
+```bash
+git rm bin/omega-debugger.ts
+```
+
+### Phase 4: Extend Public API
+
+**ADD** the following exports to existing `src/index.ts`:
+
+```typescript
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLI TOOLS - CEKS Machine (Low-Level)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -175,292 +354,249 @@ export { createOpenAIAdapter } from "./core/oracle/adapters";
 export { installPrims } from "./prims/install";  // After moving from test/helpers/
 ```
 
-### Phase 2: Relocate Test Helpers
+### Phase 5: Relocate Test Helpers
 
-Move `test/helpers/prims.ts` to `src/prims/install.ts` (it's needed for runtime, not just tests):
+Move `test/helpers/prims.ts` to `src/prims/install.ts`:
 
 ```bash
 mkdir -p src/prims
-mv test/helpers/prims.ts src/prims/install.ts
+git mv test/helpers/prims.ts src/prims/install.ts
 ```
 
-Update imports in tests and CLI tools.
+Update imports in tests and CLI.
 
-### Phase 3: Refactor CLI Imports
-
-Update both CLI tools to import from the public API:
-
-```typescript
-// bin/omega-repl.ts - BEFORE
-import { COWStore } from "../src/core/eval/store";
-import { RuntimeImpl } from "../src/core/effects/runtimeImpl";
-// ...
-
-// bin/omega-repl.ts - AFTER
-import {
-  COWStore,
-  RuntimeImpl,
-  compileTextToExpr,
-  runToCompletionWithState,
-  stepOnce,
-  createOpenAIAdapter,
-  SnapshotRepo,
-  InMemoryReceiptStore,
-  installPrims,
-  // ...
-} from "../src";
-```
-
-### Phase 4: Add package.json bin Entries
+### Phase 6: Update package.json
 
 ```json
 {
   "bin": {
-    "omega-repl": "./bin/omega-repl.ts",
-    "omega-debugger": "./bin/omega-debugger.ts"
+    "omega": "./dist/bin/omega.js"
   },
   "scripts": {
-    "repl": "tsx bin/omega-repl.ts",
-    "debug": "tsx bin/omega-debugger.ts"
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "omega": "tsx bin/omega.ts",
+    "prepublishOnly": "npm run build && npm test"
   }
 }
 ```
 
-### Phase 5: Add --help Documentation
+### Phase 7: Refactor CLI Imports
 
-Add comprehensive help to both tools:
+Update `bin/omega.ts` to import from public API:
 
 ```typescript
-// bin/omega-repl.ts
+// BEFORE (16+ internal imports)
+import { COWStore } from "../src/core/eval/store";
+import { RuntimeImpl } from "../src/core/effects/runtimeImpl";
+import { stepOnce } from "../src/core/eval/machineStep";
+// ... many more
+
+// AFTER (single import)
+import {
+  COWStore,
+  RuntimeImpl,
+  stepOnce,
+  runToCompletionWithState,
+  compileTextToExpr,
+  createOpenAIAdapter,
+  SnapshotRepo,
+  InMemoryReceiptStore,
+  installPrims,
+  type State,
+  type Frame,
+  type Val,
+} from "../src";
+```
+
+### Phase 8: Add --help
+
+```typescript
 function showHelp(): void {
   console.log(`
-omega-repl - Interactive Omega Lisp REPL
+omega - Omega Language REPL
 
 USAGE
-  npx omega-repl [options]
-  npx omega-repl --file <path>
-  npx omega-repl --cmd <expression>
+  omega [options]
+  omega [file.lisp]
+  omega --cmd <expression>
 
 OPTIONS
-  --session <name>   Use named session (persists to ~/.omega-sessions/)
+  --session <name>   Named session (persists to ~/.omega-sessions/)
   --file <path>      Load and evaluate a .lisp file
-  --cmd <expr>       Evaluate expression and exit
+  --cmd <expr>       Evaluate expression/command and exit
   --json             Output results as JSON
   --verbose          Show oracle/LLM transcripts
   --help             Show this help
 
 EXAMPLES
-  npx omega-repl                        # Start interactive REPL
-  npx omega-repl --session myproject    # Resume session "myproject"
-  npx omega-repl --file demo.lisp       # Load and run file
-  npx omega-repl --cmd "(+ 1 2)"        # Evaluate and exit
-
-ENVIRONMENT
-  OPENAI_API_KEY      OpenAI API key for LLM features
-  ANTHROPIC_API_KEY   Anthropic API key for LLM features
+  omega                              # Interactive REPL
+  omega demo.lisp                    # Run file
+  omega --session work --cmd "(+ 1 2)"
 
 REPL COMMANDS
-  :help               Show REPL commands
-  :load <file>        Load a Lisp file
-  :env                Show environment bindings
-  :clear              Clear current session
-  :quit               Exit REPL
-`);
-}
+  (expression)       Evaluate Lisp expression
 
-// bin/omega-debugger.ts
-function showHelp(): void {
-  console.log(`
-omega-debugger - Step-through Debugger for Omega Lisp
+  :help              Show all commands
+  :quit              Exit
 
-USAGE
-  npx omega-debugger [options]
+  :debug (expr)      Load expression into debugger
+  :step [N]          Step N times (default 1)
+  :run               Run to completion/breakpoint
+  :goto <N>          Jump to step N (time-travel)
+  :trace [s] [n]     Show execution trace
+  :state             Show current state
+  :stack             Show call stack
 
-OPTIONS
-  --session <name>   Use named debug session
-  --cmd <command>    Execute debugger command and exit
-  --json             Output results as JSON
-  --help             Show this help
+  :break step <N>    Breakpoint at step N
+  :break expr <t>    Breakpoint on expression type
+  :breaks            List breakpoints
+  :delbreak <id>     Delete breakpoint
 
-DEBUGGER COMMANDS
-  load <expr>         Load Lisp expression for debugging
-  loadfile <path>     Load Lisp file for debugging
-  step [n]            Step forward n steps (default: 1)
-  continue            Run until breakpoint or completion
-  break <line>        Set breakpoint at line
-  break <fn>          Set breakpoint at function entry
-  unbreak <id>        Remove breakpoint
-  save <name>         Save current state as snapshot
-  load-snapshot <n>   Restore snapshot (time-travel)
-  dump                Dump execution trace to file
-  replay              Replay execution from trace
-  goto <step>         Jump to step number (time-travel)
-  env                 Show current environment
-  stack               Show current continuation stack
-  quit                Exit debugger
+  :dump <path>       Save trace to JSON file
+  :replay <path>     Load trace from file
+  :snapshot <name>   Save named snapshot
+  :restore <name>    Restore snapshot
+  :history [N]       Show recent N steps
 
-EXAMPLES
-  npx omega-debugger --cmd "load (define x 1)" --cmd "step"
-  npx omega-debugger --session myproject
+  :ask <question>    Ask LLM (agentic mode)
+  :env [name]        Show environment bindings
+  :defs              Show defined functions
+
+ENVIRONMENT
+  OPENAI_API_KEY      OpenAI API key for :ask
+  ANTHROPIC_API_KEY   Anthropic API key for :ask
 `);
 }
 ```
-
-### Phase 6: Optional - Create cli/ Directory
-
-For better organization, consider moving tools to `cli/`:
-
-```
-cli/
-  repl/
-    index.ts          # Main REPL entry
-    adapters.ts       # LLM adapters (OpenAI, Anthropic)
-    session.ts        # Session persistence
-    completion.ts     # Tab completion
-  debugger/
-    index.ts          # Main debugger entry
-    commands.ts       # Command handlers
-    breakpoints.ts    # Breakpoint logic
-    trace.ts          # Time-travel trace
-  shared/
-    args.ts           # CLI argument parsing
-    output.ts         # JSON/text output formatting
-```
-
-This is optional but recommended if the tools continue to grow.
 
 ---
 
 ## Output Files
 
 ```
-src/
-  index.ts              # EXTENDED: Add ~25 CLI-related exports to existing 140 lines
-  prims/
-    install.ts          # MOVED from test/helpers/prims.ts
-
+BEFORE                              AFTER
+------                              -----
 bin/
-  omega-repl.ts         # UPDATED: Import from src/index (was 16 internal imports)
-  omega-debugger.ts     # UPDATED: Import from src/index (was 7 internal imports)
+  omega-repl.ts (2,233 lines)  →    omega.ts (~2,350 lines, merged)
+  omega-debugger.ts (1,198)    →    (DELETED)
 
-package.json            # UPDATED: Add bin entries and convenience scripts
-```
+src/
+  index.ts (140 lines)         →    index.ts (~165 lines, extended)
+  prims/                       →    prims/
+                                      install.ts (MOVED from test/helpers/)
 
-### Folder Structure AFTER Job
+test/helpers/
+  prims.ts                     →    (MOVED to src/prims/)
 
-```
-OmegaLLM/
-├── bin/                           # CLI Tools
-│   ├── omega-repl.ts              # (UPDATED imports)
-│   └── omega-debugger.ts          # (UPDATED imports)
-│
-├── src/
-│   ├── index.ts                   # (EXTENDED with CLI exports)
-│   │
-│   ├── prims/                     # (NEW directory)
-│   │   └── install.ts             # (MOVED from test/helpers/)
-│   │
-│   ├── core/                      # Internal (unchanged)
-│   │   ├── eval/
-│   │   │   ├── machine.ts
-│   │   │   ├── machineStep.ts     # stepOnce() - now exported via index.ts
-│   │   │   ├── run.ts             # runToCompletion() - now exported
-│   │   │   ├── store.ts           # COWStore - now exported
-│   │   │   ├── values.ts          # VUnit, VNum, etc - now exported
-│   │   │   └── env.ts
-│   │   ├── effects/
-│   │   │   └── runtimeImpl.ts     # RuntimeImpl - now exported
-│   │   ├── oracle/
-│   │   │   ├── adapters/
-│   │   │   │   └── index.ts       # createOpenAIAdapter - now exported
-│   │   │   ├── snapshots.ts       # SnapshotRepo - now exported
-│   │   │   └── receipts.ts        # InMemoryReceiptStore - now exported
-│   │   └── pipeline/
-│   │       └── compileText.ts     # compileTextToExpr - now exported
-│   │
-│   ├── frameir/                   # (unchanged)
-│   ├── outcome/                   # (unchanged)
-│   ├── registry/                  # (unchanged)
-│   └── runtime.ts                 # (unchanged)
-│
-├── test/
-│   ├── helpers/
-│   │   ├── prims.ts               # (REMOVED - moved to src/prims/)
-│   │   └── ...                    # Other helpers stay
-│   └── ...
-│
-├── demo/                          # (unchanged)
-│   ├── by-chapter/
-│   └── lisp/
-│
-└── package.json                   # (UPDATED)
-    {
-      "bin": {
-        "omega-repl": "./bin/omega-repl.ts",
-        "omega-debugger": "./bin/omega-debugger.ts"
-      },
-      "scripts": {
-        ...existing...,
-        "repl": "tsx bin/omega-repl.ts",
-        "debug": "tsx bin/omega-debugger.ts"
-      }
-    }
+package.json                   →    package.json (updated bin entry)
 ```
 
 ---
 
 ## Tasks
 
-### Phase 1: Extend Public API
-- [ ] Add ~25 CLI-related exports to existing `src/index.ts`
-- [ ] Add section comment "CLI TOOLS - CEKS Machine (Low-Level)"
+### Phase 1: Fix File Loader Bug
+- [ ] Fix `--file` to handle multi-line S-expressions (currently splits by newline)
+- [ ] Use `extractSexpressions()` instead of `.split("\n")`
+- [ ] Strip comments before parsing
+- [ ] Test with `demo/lisp/ch03-composition.lisp` (has multi-line defines)
 
-### Phase 2: Relocate Helpers
-- [ ] Move `test/helpers/prims.ts` to `src/prims/install.ts`
+**Bug location**: `bin/omega-repl.ts:2057`
+```typescript
+// BEFORE (broken)
+const commands = fs.readFileSync(filePath, "utf8").split("\n");
+
+// AFTER (fixed)
+const content = fs.readFileSync(filePath, "utf8");
+const cleanedContent = content
+  .split("\n")
+  .filter(line => !line.trim().startsWith(";"))
+  .join("\n");
+const sexprs = extractSexpressions(cleanedContent);
+```
+
+### Phase 2: Merge Debugger Features
+- [ ] Add `:dump` command to REPL
+- [ ] Add `:replay` command to REPL
+- [ ] Add `:snapshot` command to REPL
+- [ ] Add `:restore` command to REPL
+- [ ] Add `:snapshots` command to REPL
+- [ ] Add `:record` command to REPL
+- [ ] Add `:history` command to REPL
+- [ ] Update `:help` to show new commands
+
+### Phase 3: Rename/Delete
+- [ ] Rename `bin/omega-repl.ts` → `bin/omega.ts`
+- [ ] Delete `bin/omega-debugger.ts`
+- [ ] Update file headers and comments
+
+### Phase 4: Extend Public API
+- [ ] Add ~25 CLI-related exports to `src/index.ts`
+- [ ] Add section comment "CLI TOOLS - CEKS Machine"
+
+### Phase 5: Relocate Helpers
+- [ ] Move `test/helpers/prims.ts` → `src/prims/install.ts`
 - [ ] Update all test imports
 - [ ] Update CLI imports
 
-### Phase 3: Refactor CLI Imports
-- [ ] Update `bin/omega-repl.ts` to use `import from "../src"`
-- [ ] Update `bin/omega-debugger.ts` to use `import from "../src"`
-- [ ] Verify no direct `src/core/` imports remain in bin/
+### Phase 6: Refactor CLI Imports
+- [ ] Update `bin/omega.ts` to use `import from "../src"`
+- [ ] Verify no direct `src/core/` imports remain
 
-### Phase 4: Package.json Updates
-- [ ] Add `"bin"` entries for omega-repl and omega-debugger
-- [ ] Add convenience scripts (`npm run repl`, `npm run debug`)
+### Phase 7: Package.json
+- [ ] Update `"bin"` entry to point to `omega`
+- [ ] Update scripts
 
-### Phase 5: Add Help Documentation
-- [ ] Implement `--help` in omega-repl.ts
-- [ ] Implement `--help` in omega-debugger.ts
-- [ ] Add inline REPL `:help` command documentation
+### Phase 8: Add Help
+- [ ] Implement comprehensive `--help`
+- [ ] Ensure `:help` shows all commands
 
-### Phase 6: Testing
-- [ ] Verify `npx tsx bin/omega-repl.ts --help` works
-- [ ] Verify `npx tsx bin/omega-debugger.ts --help` works
-- [ ] Verify `npx tsx bin/omega-repl.ts --cmd "(+ 1 2)"` returns 3
-- [ ] Verify session persistence still works
-- [ ] Verify all tests still pass
+### Phase 9: Testing
+- [ ] Verify `omega --help` works
+- [ ] Verify `omega --cmd "(+ 1 2)"` returns 3
+- [ ] Verify `omega --session test --cmd ":debug (+ 1 2)"` works
+- [ ] Verify `omega --session test --cmd ":step"` works
+- [ ] Verify `omega --session test --cmd ":dump /tmp/t.json"` works
+- [ ] Verify all tests pass
 
 ---
 
 ## Verification Steps
 
 ```bash
-# 1. Public API exports compile
-npx tsc --noEmit src/index.ts
+# 1. Single CLI tool exists
+ls bin/*.ts
+# Should show only: omega.ts
 
-# 2. CLI tools only import from public API
-grep -r "from.*src/core" bin/  # Should be empty after refactor
+# 2. Help works
+npx tsx bin/omega.ts --help
 
-# 3. Help works
-npx tsx bin/omega-repl.ts --help
-npx tsx bin/omega-debugger.ts --help
-
-# 4. Basic functionality
-npx tsx bin/omega-repl.ts --cmd "(+ 1 2)"
+# 3. Basic evaluation
+npx tsx bin/omega.ts --cmd "(+ 1 2)"
 # Should output: 3
 
-# 5. Tests still pass
+# 4. Debugging works
+npx tsx bin/omega.ts --cmd ":debug (+ 1 2)" --json
+npx tsx bin/omega.ts --cmd ":step" --json
+npx tsx bin/omega.ts --cmd ":state" --json
+
+# 5. Sessions work
+npx tsx bin/omega.ts --session test --cmd "(define x 42)"
+npx tsx bin/omega.ts --session test --cmd "x"
+# Should output: 42
+
+# 6. Dump/replay work
+npx tsx bin/omega.ts --session test --cmd ":debug (factorial 3)"
+npx tsx bin/omega.ts --session test --cmd ":run"
+npx tsx bin/omega.ts --session test --cmd ":dump /tmp/trace.json"
+cat /tmp/trace.json | head
+
+# 7. No internal imports in CLI
+grep -c 'from "../src/core' bin/omega.ts
+# Should output: 0
+
+# 8. All tests pass
 npm test
 ```
 
@@ -468,85 +604,75 @@ npm test
 
 ## Checklist
 
-- [ ] `src/index.ts` extended with CLI exports (~25 new exports)
+- [ ] 6 new commands merged into REPL (`:dump`, `:replay`, `:snapshot`, `:restore`, `:record`, `:history`)
+- [ ] `bin/omega-repl.ts` renamed to `bin/omega.ts`
+- [ ] `bin/omega-debugger.ts` deleted
+- [ ] `src/index.ts` extended with CLI exports
 - [ ] `test/helpers/prims.ts` moved to `src/prims/install.ts`
-- [ ] `bin/omega-repl.ts` uses only public imports
-- [ ] `bin/omega-debugger.ts` uses only public imports
-- [ ] `package.json` has bin entries
-- [ ] `--help` implemented in both tools
-- [ ] No `grep -r "from.*src/core" bin/` matches
+- [ ] `bin/omega.ts` uses only public imports
+- [ ] `package.json` has single bin entry for `omega`
+- [ ] `--help` comprehensive
+- [ ] Session persistence works
+- [ ] Debug mode works via `--cmd`
 - [ ] All tests pass
-- [ ] REPL basic usage verified
-- [ ] Debugger basic usage verified
-
----
-
-## Dependencies
-
-This job has **no dependencies** on other jobs. It's a cleanup/architecture task that can be done anytime.
-
-However, completing this job makes future work cleaner:
-- New CLI features can be added without touching core
-- Library consumers have a stable API
-- Documentation can reference the public API
 
 ---
 
 ## Notes
 
-### Why Not a Separate Package?
+### Why Merge?
 
-We considered moving CLI tools to a separate npm package (`@omega/cli`), but:
+1. **Simpler**: One tool to learn, document, maintain
+2. **Standard**: Matches Python, Node, SBCL, GHCi
+3. **Agent-friendly**: Single command with sessions handles all use cases
+4. **Less code**: Remove ~1,198 lines of duplication
 
-1. **Monorepo overhead**: Adds build complexity
-2. **Version sync**: CLI and core must stay in sync
-3. **Single use case**: Most users want both
+### What We Keep from Debugger
 
-The current approach (single package, clear API boundary) is simpler.
+The 6 unique features (dump/replay/snapshots) are valuable for:
+- Sharing execution traces
+- Offline analysis
+- Reproducing bugs
 
-### Test Strategy
+These are now available in the unified REPL.
 
-Tests should **continue** to import from `src/core/` directly - this is intentional. Tests need access to internals for unit testing. The public API in `src/index.ts` is for **external consumers** (CLI tools, embedders).
+### Session Format
 
-```typescript
-// Tests - OK to use internal paths
-import { stepOnce } from "../../src/core/eval/machineStep";
+Sessions store to `~/.omega-sessions/<name>.json`:
 
-// CLI tools - must use public API
-import { stepOnce } from "../src";
+```json
+{
+  "env": { "x": 42, "factorial": "<closure>" },
+  "history": ["(define x 42)", "(factorial 5)"],
+  "debugState": null,
+  "debugTrace": [],
+  "snapshots": {}
+}
 ```
 
 ---
 
 ## Proof of Completion
 
-When this job is complete:
-
-1. **Public API extended**
+1. **Single tool**
    ```bash
-   grep -c "export" src/index.ts  # Should be ~60+ exports (was ~35)
-   grep "CEKS Machine" src/index.ts  # Should show the new section header
+   ls bin/*.ts | wc -l
+   # Should output: 1
    ```
 
-2. **CLI tools use public API**
+2. **New commands work**
    ```bash
-   grep -c 'from "../src"' bin/omega-repl.ts     # Should be 1
-   grep -c 'from "../src/core' bin/omega-repl.ts  # Should be 0
+   npx tsx bin/omega.ts --cmd ":help" | grep -c "dump\|replay\|snapshot"
+   # Should output: 3+
    ```
 
-3. **Help works**
+3. **No internal imports**
    ```bash
-   npx tsx bin/omega-repl.ts --help | head -10
-   npx tsx bin/omega-debugger.ts --help | head -10
+   grep 'from "../src/core' bin/omega.ts
+   # Should output nothing
    ```
 
-4. **Basic REPL works**
-   ```bash
-   echo "(+ 1 2)" | npx tsx bin/omega-repl.ts --cmd "(+ 1 2)"
-   # Output: 3
-   ```
-
-5. **All tests pass**
+4. **All tests pass**
    ```bash
    npm test
    ```

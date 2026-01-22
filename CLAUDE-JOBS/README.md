@@ -67,7 +67,7 @@ These jobs implement the architecture specified in `ARCHITECTURE-LANGUAGES-*.md`
 
 | Job ID | Title | Priority | Status | Depends On |
 |--------|-------|----------|--------|------------|
-| [017](./017-SEPARATE-CLI-TOOLS.md) | Separate CLI Tools (REPL/Debugger) | P2 - Cleanup | NOT STARTED | - |
+| [017](./017-SEPARATE-CLI-TOOLS.md) | Unify CLI into Single `omega` Command | P2 - Cleanup | NOT STARTED | - |
 
 ---
 

@@ -1,2 +1,2 @@
-export * from "./nativeRegistry";
 export * from "./serializer";
+export * from "./nativeRegistry";

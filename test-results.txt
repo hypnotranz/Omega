@@ -1,0 +1,483 @@
+
+> omega-llm@0.1.0 test
+> vitest run
+
+
+[7m[1m[36m RUN [39m[22m[27m [36mv1.6.1[39m [90mC:/Users/Richa/parmenides-dev/agent-harness/OmegaLLM[39m
+
+ [32m✓[39m test/oracle/adapters.spec.ts [2m ([22m[2m27 tests[22m[2m)[22m[90m 68[2mms[22m[39m
+ [32m✓[39m test/prompt15-macro/macro.spec.ts [2m ([22m[2m40 tests[22m[2m)[22m[90m 88[2mms[22m[39m
+ [32m✓[39m test/prompt14-generic/generic.spec.ts [2m ([22m[2m50 tests[22m[2m)[22m[90m 123[2mms[22m[39m
+ [32m✓[39m test/prompt12-constraints/constraints.spec.ts [2m ([22m[2m24 tests[22m[2m)[22m[90m 95[2mms[22m[39m
+ [32m✓[39m test/prompt18-meta/meta.spec.ts [2m ([22m[2m63 tests[22m[2m)[22m[90m 214[2mms[22m[39m
+ [32m✓[39m test/prompt13-concurrency/concurrency.spec.ts [2m ([22m[2m56 tests[22m[2m)[22m[90m 234[2mms[22m[39m
+ [32m✓[39m test/prompt16-stream/stream.spec.ts [2m ([22m[2m31 tests[22m[2m)[22m[90m 79[2mms[22m[39m
+ [32m✓[39m test/demo/wow-pack.spec.ts [2m ([22m[2m57 tests[22m[2m)[22m[90m 262[2mms[22m[39m
+ [32m✓[39m test/prompt17-compiler/compiler.spec.ts [2m ([22m[2m41 tests[22m[2m)[22m[90m 144[2mms[22m[39m
+ [32m✓[39m test/semantic-rewriting/semantic-rewriting.spec.ts [2m ([22m[2m22 tests[22m[2m)[22m[33m 917[2mms[22m[39m
+ [32m✓[39m test/prompt11/search.spec.ts [2m ([22m[2m24 tests[22m[2m)[22m[33m 1296[2mms[22m[39m
+ [32m✓[39m test/repl/debugger-advanced.spec.ts [2m ([22m[2m36 tests[22m[2m)[22m[33m 2072[2mms[22m[39m
+ [32m✓[39m test/oracle/mock-oracle-protocol.spec.ts [2m ([22m[2m9 tests[22m[2m)[22m[33m 1281[2mms[22m[39m
+ [32m✓[39m test/prompt10/ctx-modules.spec.ts [2m ([22m[2m37 tests[22m[2m)[22m[90m 157[2mms[22m[39m
+ [32m✓[39m test/oracle/protocol-capabilities.spec.ts [2m ([22m[2m7 tests[22m[2m)[22m[33m 816[2mms[22m[39m
+ [32m✓[39m test/prompt9/governance.spec.ts [2m ([22m[2m28 tests[22m[2m)[22m[33m 2329[2mms[22m[39m
+ [32m✓[39m test/amb/amb.spec.ts [2m ([22m[2m33 tests[22m[2m)[22m[33m 3349[2mms[22m[39m
+ [32m✓[39m test/metacircular/metacircular.spec.ts [2m ([22m[2m24 tests[22m[2m)[22m[33m 2365[2mms[22m[39m
+ [32m✓[39m test/oracle/plugins.spec.ts [2m ([22m[2m27 tests[22m[2m)[22m[90m 67[2mms[22m[39m
+ [32m✓[39m test/generic/generic.spec.ts [2m ([22m[2m34 tests[22m[2m)[22m[33m 3707[2mms[22m[39m
+ [32m✓[39m test/repl/debugger.spec.ts [2m ([22m[2m35 tests[22m[2m)[22m[33m 2444[2mms[22m[39m
+ [32m✓[39m test/core/tools/registry.spec.ts [2m ([22m[2m40 tests[22m[2m)[22m[90m 150[2mms[22m[39m
+ [32m✓[39m test/semantic/semantic.spec.ts [2m ([22m[2m35 tests[22m[2m)[22m[33m 4177[2mms[22m[39m
+ [32m✓[39m test/oracle/reentry.spec.ts [2m ([22m[2m6 tests[22m[2m)[22m[33m 734[2mms[22m[39m
+[90mstdout[2m | test/live/parmenides.e2e.spec.ts[2m > [22m[2mRegistry Introspection (what Lisp can query)[2m > [22m[2mlists all plugins with capabilities[22m[39m
+
+📋 REGISTERED PLUGINS:
+
+  anthropic:
+    Name: Anthropic Claude
+    Default Model: claude-sonnet-4-20250514
+    Native Tools: true
+    MCP Support: true
+    Vision: true
+    Max Context: 200000
+    Score: 64
+
+  openai:
+    Name: OpenAI GPT
+    Default Model: gpt-4o
+    Native Tools: true
+    MCP Support: false
+    Vision: true
+    Max Context: 128000
+    Score: 59
+
+  ollama:
+    Name: Ollama Local
+    Default Model: llama3.1
+    Native Tools: false
+    MCP Support: false
+    Vision: false
+    Max Context: 8192
+    Score: 27
+
+[90mstdout[2m | test/live/parmenides.e2e.spec.ts[2m > [22m[2mRegistry Introspection (what Lisp can query)[2m > [22m[2mqueries plugins by capability[22m[39m
+
+Plugins with native tools: anthropic, openai
+Plugins with vision: anthropic, openai
+Best plugin for Oracle: anthropic
+
+[90mstdout[2m | test/live/parmenides.e2e.spec.ts[2m > [22m[2mRegistry Introspection (what Lisp can query)[2m > [22m[2mvalidates plugin configs[22m[39m
+anthropic empty config: ❌ Missing API key: set ANTHROPIC_API_KEY environment variable or pass apiKey in config
+openai empty config: ✅
+ollama empty config: ✅
+
+ [32m✓[39m test/live/parmenides.e2e.spec.ts [2m ([22m[2m9 tests[22m [2m|[22m [33m6 skipped[39m[2m)[22m[90m 263[2mms[22m[39m
+ [32m✓[39m test/prompt8/machine-stepper.spec.ts [2m ([22m[2m21 tests[22m[2m)[22m[33m 428[2mms[22m[39m
+ [32m✓[39m test/governance/governance.spec.ts [2m ([22m[2m23 tests[22m[2m)[22m[33m 2490[2mms[22m[39m
+ [32m✓[39m test/repl/step-debugger.spec.ts [2m ([22m[2m29 tests[22m[2m)[22m[33m 2981[2mms[22m[39m
+ [32m✓[39m test/integration/budget-tools.spec.ts [2m ([22m[2m13 tests[22m[2m)[22m[33m 631[2mms[22m[39m
+ [2m[90m↓[39m[22m test/live/openai-live.spec.ts [2m ([22m[2m4 tests[22m [2m|[22m [33m4 skipped[39m[2m)[22m
+ [32m✓[39m test/public-api/cli-exports.spec.ts [2m ([22m[2m42 tests[22m[2m)[22m[33m 1232[2mms[22m[39m
+ [32m✓[39m test/repl/file-loader.spec.ts [2m ([22m[2m22 tests[22m[2m)[22m[90m 79[2mms[22m[39m
+ [32m✓[39m test/docs/quick-reference.spec.ts [2m ([22m[2m119 tests[22m[2m)[22m[90m 229[2mms[22m[39m
+ [32m✓[39m test/oracle/impl16.spec.ts [2m ([22m[2m27 tests[22m[2m)[22m[33m 392[2mms[22m[39m
+ [32m✓[39m test/lint/passes.spec.ts [2m ([22m[2m10 tests[22m[2m)[22m[90m 57[2mms[22m[39m
+ [32m✓[39m test/outcome/outcome.spec.ts [2m ([22m[2m15 tests[22m[2m)[22m[90m 58[2mms[22m[39m
+ [32m✓[39m test/oracle/observe.spec.ts [2m ([22m[2m17 tests[22m[2m)[22m[33m 1832[2mms[22m[39m
+ [32m✓[39m test/live/trace-demo.spec.ts [2m ([22m[2m5 tests[22m[2m)[22m[33m 666[2mms[22m[39m
+[90mstdout[2m | test/live/trace-demo.spec.ts[2m > [22m[2mExecution Traces - REAL step-by-step output[2m > [22m[2mtraces simple arithmetic: (+ 1 2)[22m[39m
+
+=== TRACE: (+ 1 2) ===
+[0] Expr:App(Var) | stack=0
+[1] Expr:Var(+) | stack=1
+[2] Val:Native | stack=1
+[3] Expr:Lit(1) | stack=1
+[4] Val:Num(1) | stack=1
+[5] Expr:Lit(2) | stack=1
+[6] Val:Num(2) | stack=1
+[7] Val:Num(3) | stack=0
+Result: { tag: [32m'Num'[39m, n: [33m3[39m }
+
+[90mstdout[2m | test/live/trace-demo.spec.ts[2m > [22m[2mExecution Traces - REAL step-by-step output[2m > [22m[2mtraces function call with stack frames[22m[39m
+
+=== TRACE: (double 21) ===
+[0] Expr:Begin(2 exprs) | stack=0
+[1] Expr:Define(double$bid#1) | stack=1
+[2] Expr:Lambda(1 params) | stack=2
+[3] Val:Closure(x$bid#2) | stack=2
+[4] Val:Unit | stack=1
+[5] Expr:App(Var) | stack=1
+[6] Expr:Var(double$bid#1) | stack=2
+[7] Val:Closure(x$bid#2) | stack=2
+[8] Expr:Lit(21) | stack=2
+[9] Val:Num(21) | stack=2
+[10] Expr:App(Var) | stack=2
+[11] Expr:Var(*) | stack=3
+[12] Val:Native | stack=3
+[13] Expr:Var(x$bid#2) | stack=3
+[14] Val:Num(21) | stack=3
+[15] Expr:Lit(2) | stack=3
+[16] Val:Num(2) | stack=3
+[17] Val:Num(42) | stack=2
+[18] Val:Num(42) | stack=1
+[19] Val:Num(42) | stack=0
+Result: { tag: [32m'Num'[39m, n: [33m42[39m }
+Max stack depth: [33m3[39m
+
+[90mstdout[2m | test/live/trace-demo.spec.ts[2m > [22m[2mExecution Traces - REAL step-by-step output[2m > [22m[2mtraces recursion and shows growing stack[22m[39m
+
+=== TRACE: (fact 5) ===
+First 20 steps:
+[0] Expr:Begin(2 exprs) | stack=0
+[1] Expr:Define(fact$bid#1) | stack=1
+[2] Expr:Lambda(1 params) | stack=2
+[3] Val:Closure(n$bid#2) | stack=2
+[4] Val:Unit | stack=1
+[5] Expr:App(Var) | stack=1
+[6] Expr:Var(fact$bid#1) | stack=2
+[7] Val:Closure(n$bid#2) | stack=2
+[8] Expr:Lit(5) | stack=2
+[9] Val:Num(5) | stack=2
+[10] Expr:If | stack=2
+[11] Expr:App(Var) | stack=3
+[12] Expr:Var(<=) | stack=4
+[13] Val:Native | stack=4
+[14] Expr:Var(n$bid#2) | stack=4
+[15] Val:Num(5) | stack=4
+[16] Expr:Lit(1) | stack=4
+[17] Val:Num(1) | stack=4
+[18] Val:Bool(false) | stack=3
+[19] Expr:App(Var) | stack=2
+... (101 steps omitted) ...
+Last 10 steps:
+[121] Val:Num(1) | stack=9
+[122] Val:Num(2) | stack=8
+[123] Val:Num(2) | stack=7
+[124] Val:Num(6) | stack=6
+[125] Val:Num(6) | stack=5
+[126] Val:Num(24) | stack=4
+[127] Val:Num(24) | stack=3
+[128] Val:Num(120) | stack=2
+[129] Val:Num(120) | stack=1
+[130] Val:Num(120) | stack=0
+
+Total steps: 131
+Result: { tag: [32m'Num'[39m, n: [33m120[39m }
+Max stack depth: [33m12[39m
+
+[90mstdout[2m | test/live/trace-demo.spec.ts[2m > [22m[2mExecution Traces - REAL step-by-step output[2m > [22m[2mtraces infer.op and shows stack at oracle call[22m[39m
+
+=== TRACE: (ask-oracle ...) -> infer.op ===
+[0] Expr:Begin(2 exprs) | stack=0
+[1] Expr:Define(ask-oracle$bid#1) | stack=1
+[2] Expr:Lambda(1 params) | stack=2
+[3] Val:Closure(question$bid#2) | stack=2
+[4] Val:Unit | stack=1
+[5] Expr:App(Var) | stack=1
+[6] Expr:Var(ask-oracle$bid#1) | stack=2
+[7] Val:Closure(question$bid#2) | stack=2
+[8] Expr:Lit("What is life?") | stack=2
+[9] Val:Str("What is life?") | stack=2
+[10] Expr:Effect(infer.op) | stack=2
+[11] Expr:Var(question$bid#2) | stack=3
+[12] Val:Str("What is life?") | stack=3 | OP=infer.op
+[13] Val:Str("oracle-done") | stack=2
+[14] Val:Str("oracle-done") | stack=1
+[15] Val:Str("oracle-done") | stack=0
+
+Effect triggered at step: [33m12[39m
+Stack depth at effect: [33m3[39m
+Stack frames at effect: [ [32m'KBegin'[39m, [32m'KCall'[39m, [32m'KEffect'[39m ]
+
+Oracle captured stack: {
+  "depth": 2,
+  "frames": [
+    {
+      "index": 0,
+      "tag": "KBegin",
+      "hasEnv": true,
+      "envRef": "env:2"
+    },
+    {
+      "index": 1,
+      "tag": "KCall",
+      "hasEnv": false
+    }
+  ]
+}
+
+[90mstdout[2m | test/live/trace-demo.spec.ts[2m > [22m[2mExecution Traces - REAL step-by-step output[2m > [22m[2mtraces nested function calls with oracle[22m[39m
+
+=== TRACE: level1 -> level2 -> level3 -> infer.op ===
+[0] Expr:Begin(4 exprs) | stack=0
+[1] Expr:Define(level3$bid#1) | stack=1
+[2] Expr:Lambda(0 params) | stack=2
+[3] Val:Closure(?) | stack=2
+[4] Val:Unit | stack=1
+[5] Expr:Define(level2$bid#2) | stack=1
+[6] Expr:Lambda(0 params) | stack=2
+[7] Val:Closure(?) | stack=2
+[8] Val:Unit | stack=1
+[9] Expr:Define(level1$bid#3) | stack=1
+[10] Expr:Lambda(0 params) | stack=2
+[11] Val:Closure(?) | stack=2
+[12] Val:Unit | stack=1
+[13] Expr:App(Var) | stack=1
+[14] Expr:Var(level1$bid#3) | stack=2
+[15] Val:Closure(?) | stack=2
+[16] Expr:App(Var) | stack=2
+[17] Expr:Var(level2$bid#2) | stack=3
+[18] Val:Closure(?) | stack=3
+[19] Expr:App(Var) | stack=3
+[20] Expr:Var(level3$bid#1) | stack=4
+[21] Val:Closure(?) | stack=4
+[22] Expr:Effect(infer.op) | stack=4
+[23] Expr:Lit("deep") | stack=5
+[24] Val:Str("deep") | stack=5 | OP=infer.op
+[25] Val:Str("oracle-done") | stack=4
+[26] Val:Str("oracle-done") | stack=3
+[27] Val:Str("oracle-done") | stack=2
+[28] Val:Str("oracle-done") | stack=1
+[29] Val:Str("oracle-done") | stack=0
+
+Effect triggered at step: [33m24[39m
+Stack depth at effect: [33m5[39m
+Stack frames: [ [32m'KBegin'[39m, [32m'KCall'[39m, [32m'KCall'[39m, [32m'KCall'[39m, [32m'KEffect'[39m ]
+
+Oracle saw stack: {
+  "depth": 4,
+  "frames": [
+    {
+      "index": 0,
+      "tag": "KBegin",
+      "hasEnv": true,
+      "envRef": "env:2"
+    },
+    {
+      "index": 1,
+      "tag": "KCall",
+      "hasEnv": false
+    },
+    {
+      "index": 2,
+      "tag": "KCall",
+      "hasEnv": false
+    },
+    {
+      "index": 3,
+      "tag": "KCall",
+      "hasEnv": false
+    }
+  ]
+}
+
+[90mstdout[2m | test/live/plugins.integration.spec.ts[2m > [22m[2mOpenAI Integration[2m > [22m[2mruns inference with REAL eval[22m[39m
+OpenAI: 2 turns, usedRealEval=true
+
+ [32m✓[39m test/live/full-stack-live.spec.ts [2m ([22m[2m8 tests[22m [2m|[22m [33m2 skipped[39m[2m)[22m[90m 35[2mms[22m[39m
+[90mstdout[2m | test/live/full-stack-live.spec.ts[2m > [22m[2mFull Stack Live Integration[2m > [22m[2mConfig System[2m > [22m[2mloads and validates config[22m[39m
+Config validation: { valid: [33mtrue[39m, errors: [], warnings: [] }
+
+[90mstdout[2m | test/live/full-stack-live.spec.ts[2m > [22m[2mFull Stack Live Integration[2m > [22m[2mS-Expression Parsing & Pattern Matching[2m > [22m[2mmatches Lisp macro patterns with ellipsis[22m[39m
+Let pattern match: [33mtrue[39m
+Bound vars: (x y z)
+Bound vals: (1 2 3)
+Body: ((+ x y) (* y z))
+
+ [32m✓[39m test/registry/registry.spec.ts [2m ([22m[2m12 tests[22m[2m)[22m[90m 59[2mms[22m[39m
+ [32m✓[39m test/quick-reference.spec.ts [2m ([22m[2m3 tests[22m[2m)[22m[33m 4637[2mms[22m[39m
+[90mstdout[2m | test/live/real-stack.spec.ts[2m > [22m[2mReal Stack Observation from Lisp→LLM flow[2m > [22m[2mLLM sees non-empty stack when Lisp calls infer.op[22m[39m
+Oracle observed stack: {
+  "depth": 2,
+  "frames": [
+    {
+      "index": 0,
+      "tag": "KBegin",
+      "hasEnv": true,
+      "envRef": "env:2"
+    },
+    {
+      "index": 1,
+      "tag": "KCall",
+      "hasEnv": false
+    }
+  ]
+}
+Oracle observed control: {
+  "tag": "Val",
+  "v": {
+    "tag": "Unit"
+  }
+}
+Final result: { tag: [32m'Str'[39m, s: [32m'oracle-response'[39m }
+Captured stack depth: [33m2[39m
+Captured frames: [
+  { index: [33m0[39m, tag: [32m'KBegin'[39m, hasEnv: [33mtrue[39m, envRef: [32m'env:2'[39m },
+  { index: [33m1[39m, tag: [32m'KCall'[39m, hasEnv: [33mfalse[39m }
+]
+
+[90mstdout[2m | test/live/real-stack.spec.ts[2m > [22m[2mReal Stack Observation from Lisp→LLM flow[2m > [22m[2mLLM sees nested stack when Lisp has deep recursion[22m[39m
+Oracle observed stack: {
+  "depth": 12,
+  "frames": [
+    {
+      "index": 0,
+      "tag": "KBegin",
+      "hasEnv": true,
+      "envRef": "env:2"
+    },
+    {
+      "index": 1,
+      "tag": "KCall",
+      "hasEnv": false
+    },
+    {
+      "index": 2,
+      "tag": "KAppArg",
+      "hasEnv": true,
+      "envRef": "env:3"
+    },
+    {
+      "index": 3,
+      "tag": "KCall",
+      "hasEnv": false
+    },
+    {
+      "index": 4,
+      "tag": "KAppArg",
+      "hasEnv": true,
+      "envRef": "env:4"
+    },
+    {
+      "index": 5,
+      "tag": "KCall",
+      "hasEnv": false
+    },
+    {
+      "index": 6,
+      "tag": "KAppArg",
+      "hasEnv": true,
+      "envRef": "env:5"
+    },
+    {
+      "index": 7,
+      "tag": "KCall",
+      "hasEnv": false
+    },
+    {
+      "index": 8,
+      "tag": "KAppArg",
+      "hasEnv": true,
+      "envRef": "env:6"
+    },
+    {
+      "index": 9,
+      "tag": "KCall",
+      "hasEnv": false
+    },
+    {
+      "index": 10,
+      "tag": "KAppArg",
+      "hasEnv": true,
+      "envRef": "env:7"
+    },
+    {
+      "index": 11,
+      "tag": "KCall",
+      "hasEnv": false
+    }
+  ]
+}
+Oracle observed control: {
+  "tag": "Val",
+  "v": {
+    "tag": "Unit"
+  }
+}
+Final result: { tag: [32m'Num'[39m, n: [33mNaN[39m }
+Captured stack depth: [33m12[39m
+
+[90mstdout[2m | test/live/real-stack.spec.ts[2m > [22m[2mReal Stack Observation from Lisp→LLM flow[2m > [22m[2mLLM can call omega_eval and create nested execution[22m[39m
+Initial stack depth: [33m0[39m
+Eval result: { tag: [32m'Num'[39m, n: [33m300[39m }
+Final result: { tag: [32m'Num'[39m, n: [33m300[39m }
+
+ [32m✓[39m test/live/real-stack.spec.ts [2m ([22m[2m3 tests[22m[2m)[22m[33m 518[2mms[22m[39m
+ [32m✓[39m test/core/receipts/ctxReceipts.spec.ts [2m ([22m[2m21 tests[22m[2m)[22m[90m 67[2mms[22m[39m
+[90mstdout[2m | test/live/plugins.integration.spec.ts[2m > [22m[2mOpenAI Integration[2m > [22m[2mruns observe with REAL definitions[22m[39m
+OpenAI observe: 2 turns, usedRealObserve=true
+
+ [32m✓[39m test/oracle/oracleProc.spec.ts [2m ([22m[2m12 tests[22m[2m)[22m[33m 1488[2mms[22m[39m
+ [32m✓[39m test/core/config/config.spec.ts [2m ([22m[2m20 tests[22m[2m)[22m[90m 56[2mms[22m[39m
+ [32m✓[39m test/core/governance/budgets.spec.ts [2m ([22m[2m23 tests[22m[2m)[22m[90m 47[2mms[22m[39m
+ [32m✓[39m test/solver/combinators.spec.ts [2m ([22m[2m11 tests[22m[2m)[22m[33m 1333[2mms[22m[39m
+ [32m✓[39m test/core/governance/profile.spec.ts [2m ([22m[2m23 tests[22m[2m)[22m[90m 74[2mms[22m[39m
+ [32m✓[39m test/provenance/staleness.spec.ts [2m ([22m[2m4 tests[22m[2m)[22m[33m 522[2mms[22m[39m
+ [32m✓[39m test/core/receipts/snapshots.spec.ts [2m ([22m[2m18 tests[22m[2m)[22m[90m 45[2mms[22m[39m
+[90mstdout[2m | test/live/plugins.integration.spec.ts[2m > [22m[2mModelSelector Integration[2m > [22m[2mroutes to correct adapter with REAL portal[22m[39m
+ModelSelector: completed in 2 turns
+
+ [32m✓[39m test/live/plugins.integration.spec.ts [2m ([22m[2m11 tests[22m [2m|[22m [33m5 skipped[39m[2m)[22m[33m 9293[2mms[22m[39m
+ [32m✓[39m test/monad/primitives.spec.ts [2m ([22m[2m30 tests[22m[2m)[22m[33m 3022[2mms[22m[39m
+ [2m[90m↓[39m[22m test/live/debugger-e2e.spec.ts [2m ([22m[2m2 tests[22m [2m|[22m [33m2 skipped[39m[2m)[22m
+ [32m✓[39m test/core/commit/commit.spec.ts [2m ([22m[2m16 tests[22m[2m)[22m[90m 60[2mms[22m[39m
+ [32m✓[39m test/cli/omega.spec.ts [2m ([22m[2m28 tests[22m[2m)[22m[90m 65[2mms[22m[39m
+ [32m✓[39m test/streams/stream-interleave.spec.ts [2m ([22m[2m6 tests[22m[2m)[22m[33m 875[2mms[22m[39m
+ [32m✓[39m test/core/sexp/patternMatch.spec.ts [2m ([22m[2m25 tests[22m[2m)[22m[90m 105[2mms[22m[39m
+ [32m✓[39m test/core/receipts/receipts.spec.ts [2m ([22m[2m14 tests[22m[2m)[22m[90m 70[2mms[22m[39m
+ [32m✓[39m test/adapters/replay.spec.ts [2m ([22m[2m5 tests[22m[2m)[22m[90m 68[2mms[22m[39m
+ [32m✓[39m test/core/sexp/sexp.spec.ts [2m ([22m[2m28 tests[22m[2m)[22m[90m 77[2mms[22m[39m
+ [32m✓[39m test/ports/ports.spec.ts [2m ([22m[2m7 tests[22m[2m)[22m[90m 54[2mms[22m[39m
+ [32m✓[39m test/effects/commit-rewrite.spec.ts [2m ([22m[2m3 tests[22m[2m)[22m[90m 56[2mms[22m[39m
+ [32m✓[39m test/lint/runner.spec.ts [2m ([22m[2m5 tests[22m[2m)[22m[90m 140[2mms[22m[39m
+ [32m✓[39m test/continuations/call-cc.spec.ts [2m ([22m[2m7 tests[22m[2m)[22m[33m 789[2mms[22m[39m
+ [32m✓[39m test/conditions/signal.spec.ts [2m ([22m[2m9 tests[22m[2m)[22m[33m 1021[2mms[22m[39m
+ [32m✓[39m test/provenance/store.spec.ts [2m ([22m[2m6 tests[22m[2m)[22m[33m 332[2mms[22m[39m
+ [32m✓[39m test/demo/by-chapter.spec.ts [2m ([22m[2m4 tests[22m[2m)[22m[33m 3722[2mms[22m[39m
+ [32m✓[39m test/evidence/evidence.spec.ts [2m ([22m[2m5 tests[22m[2m)[22m[33m 874[2mms[22m[39m
+ [32m✓[39m test/provenance/graph.spec.ts [2m ([22m[2m8 tests[22m[2m)[22m[90m 52[2mms[22m[39m
+ [32m✓[39m test/core/ctx/ctx.spec.ts [2m ([22m[2m9 tests[22m[2m)[22m[90m 32[2mms[22m[39m
+ [32m✓[39m test/streams/stream-interleave.runtime.spec.ts [2m ([22m[2m6 tests[22m[2m)[22m[90m 44[2mms[22m[39m
+ [32m✓[39m test/continuations/delimited.spec.ts [2m ([22m[2m5 tests[22m[2m)[22m[33m 605[2mms[22m[39m
+ [32m✓[39m test/frameir/frameir.spec.ts [2m ([22m[2m6 tests[22m[2m)[22m[90m 29[2mms[22m[39m
+ [32m✓[39m test/core/governance/caps.spec.ts [2m ([22m[2m11 tests[22m[2m)[22m[90m 35[2mms[22m[39m
+ [32m✓[39m test/oracle/protocol.spec.ts [2m ([22m[2m5 tests[22m[2m)[22m[33m 604[2mms[22m[39m
+ [32m✓[39m test/nondet/fairness.spec.ts [2m ([22m[2m1 test[22m[2m)[22m[90m 197[2mms[22m[39m
+ [32m✓[39m test/frameir/codec.spec.ts [2m ([22m[2m6 tests[22m[2m)[22m[90m 33[2mms[22m[39m
+ [32m✓[39m test/solver/facts.spec.ts [2m ([22m[2m5 tests[22m[2m)[22m[33m 630[2mms[22m[39m
+ [32m✓[39m test/oracle/apply.spec.ts [2m ([22m[2m1 test[22m[2m)[22m[90m 20[2mms[22m[39m
+ [32m✓[39m tests/call-cc.test.ts [2m ([22m[2m4 tests[22m[2m)[22m[33m 581[2mms[22m[39m
+ [32m✓[39m test/effects/handler_k.spec.ts [2m ([22m[2m1 test[22m[2m)[22m[90m 204[2mms[22m[39m
+ [32m✓[39m test/macros/ellipses.spec.ts [2m ([22m[2m2 tests[22m[2m)[22m[90m 35[2mms[22m[39m
+ [32m✓[39m test/frameir/roundtrip.spec.ts [2m ([22m[2m3 tests[22m[2m)[22m[90m 21[2mms[22m[39m
+ [32m✓[39m test/conditions/restart.spec.ts [2m ([22m[2m6 tests[22m[2m)[22m[33m 767[2mms[22m[39m
+ [32m✓[39m test/compiler/normalize.spec.ts [2m ([22m[2m2 tests[22m[2m)[22m[90m 32[2mms[22m[39m
+ [32m✓[39m test/frameir/normalize.spec.ts [2m ([22m[2m3 tests[22m[2m)[22m[90m 30[2mms[22m[39m
+ [32m✓[39m test/solver/budget.spec.ts [2m ([22m[2m6 tests[22m[2m)[22m[33m 964[2mms[22m[39m
+ [32m✓[39m test/solver/fixpoint.spec.ts [2m ([22m[2m5 tests[22m[2m)[22m[33m 780[2mms[22m[39m
+ [32m✓[39m test/compiler/lower.spec.ts [2m ([22m[2m2 tests[22m[2m)[22m[90m 24[2mms[22m[39m
+ [32m✓[39m test/oracle/intercept.spec.ts [2m ([22m[2m3 tests[22m[2m)[22m[33m 411[2mms[22m[39m
+ [32m✓[39m test/frameir/hash.spec.ts [2m ([22m[2m3 tests[22m[2m)[22m[90m 27[2mms[22m[39m
+ [32m✓[39m test/compiler/expander.spec.ts [2m ([22m[2m2 tests[22m[2m)[22m[90m 35[2mms[22m[39m
+ [32m✓[39m test/solver/repair.spec.ts [2m ([22m[2m4 tests[22m[2m)[22m[33m 588[2mms[22m[39m
+ [32m✓[39m tests/types.test.ts [2m ([22m[2m2 tests[22m[2m)[22m[90m 23[2mms[22m[39m
+ [32m✓[39m tests/profile.test.ts [2m ([22m[2m2 tests[22m[2m)[22m[90m 17[2mms[22m[39m
+ [32m✓[39m test/monad/laws.spec.ts [2m ([22m[2m5 tests[22m[2m)[22m[33m 1050[2mms[22m[39m
+ [32m✓[39m test/compiler/reader.spec.ts [2m ([22m[2m3 tests[22m[2m)[22m[90m 49[2mms[22m[39m
+ [32m✓[39m test/macros/hygiene.spec.ts [2m ([22m[2m2 tests[22m[2m)[22m[90m 296[2mms[22m[39m
+ [32m✓[39m test/registry/docgen.spec.ts [2m ([22m[2m2 tests[22m[2m)[22m[90m 26[2mms[22m[39m
+ [32m✓[39m test/compiler/pipeline.spec.ts [2m ([22m[2m2 tests[22m[2m)[22m[90m 41[2mms[22m[39m
+ [32m✓[39m test/conditions/error.spec.ts [2m ([22m[2m3 tests[22m[2m)[22m[33m 432[2mms[22m[39m
+ [32m✓[39m test/compiler/desugar.spec.ts [2m ([22m[2m2 tests[22m[2m)[22m[90m 28[2mms[22m[39m
+ [32m✓[39m test/hermetic/replay.spec.ts [2m ([22m[2m1 test[22m[2m)[22m[90m 39[2mms[22m[39m
+ [32m✓[39m test/differential/expanded_ast_alpha_eq.spec.ts [2m ([22m[2m1 test[22m[2m)[22m[90m 33[2mms[22m[39m
+ [32m✓[39m test/repl/file-loader-integration.spec.ts [2m ([22m[2m4 tests[22m[2m)[22m[33m 39803[2mms[22m[39m
+[90mstderr[2m | test/repl/file-loader-integration.spec.ts[2m > [22m[2mREPL file loader integration tests[2m > [22m[2mshould handle multi-line S-expressions from file[22m[39m
+Test execution had errors, but not parse-related: spawnSync cmd.exe ETIMEDOUT
+
+
+[2m Test Files [22m [1m[32m103 passed[39m[22m[2m | [22m[33m2 skipped[39m[90m (105)[39m
+[2m      Tests [22m [1m[32m1630 passed[39m[22m[2m | [22m[33m19 skipped[39m[90m (1649)[39m
+[2m   Start at [22m 19:28:56
+[2m   Duration [22m 66.32s[2m (transform 18.49s, setup 46ms, collect 62.74s, tests 116.63s, environment 107ms, prepare 74.16s)[22m
+

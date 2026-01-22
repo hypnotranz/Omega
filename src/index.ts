@@ -137,3 +137,38 @@ export * from "./outcome";
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export * from "./registry";
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLI TOOLS - CEKS Machine (Low-Level Debugging Support)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Store (Copy-on-Write memory)
+export { COWStore, type Store } from "./core/eval/store";
+
+// Single-step execution (for debugger)
+export { stepOnce, type StepResult } from "./core/eval/machineStep";
+
+// Run to completion (for REPL)
+export { runToCompletionWithState, runToCompletion } from "./core/eval/run";
+
+// Machine state types
+export type { State, Frame } from "./core/eval/machine";
+
+// Environment type
+export type { Env } from "./core/eval/env";
+
+// Compilation (text -> AST)
+export { compileTextToExpr } from "./core/pipeline/compileText";
+
+// Effects runtime (for handling oracle calls)
+export { RuntimeImpl } from "./core/effects/runtimeImpl";
+
+// Oracle state management
+export { SnapshotRepo } from "./core/oracle/snapshots";
+export { InMemoryReceiptStore, type ReceiptStore } from "./core/oracle/receipts";
+
+// OpenAI adapter (Anthropic already exported above)
+export { createOpenAIAdapter } from "./core/oracle/adapters";
+
+// Primitive installation (for initializing REPL environment)
+export { installPrims } from "./core/prims";

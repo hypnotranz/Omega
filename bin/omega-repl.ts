@@ -1018,6 +1018,7 @@ interface SessionData {
   traceLength: number;
   breakpoints: Breakpoint[];
   nextBreakpointId: number;
+  recordingEnabled: boolean;
 }
 
 function saveSession(replState: ReplState, name: string): void {
@@ -1030,6 +1031,7 @@ function saveSession(replState: ReplState, name: string): void {
     traceLength: replState.trace.length,
     breakpoints: replState.breakpoints,
     nextBreakpointId: replState.nextBreakpointId,
+    recordingEnabled: replState.recordingEnabled,
   };
   fs.writeFileSync(getSessionPath(name), JSON.stringify(data, null, 2));
 }
@@ -1048,6 +1050,7 @@ async function loadSession(name: string): Promise<ReplState | null> {
     replState.defs = data.defs || [];
     replState.breakpoints = data.breakpoints || [];
     replState.nextBreakpointId = data.nextBreakpointId || 1;
+    replState.recordingEnabled = data.recordingEnabled !== undefined ? data.recordingEnabled : true;
 
     // If there was a debug session, restore it
     if (data.debugMode && data.debugCode) {
@@ -1224,6 +1227,13 @@ interface Breakpoint {
   enabled: boolean;
 }
 
+interface Snapshot {
+  name: string;
+  step: number;
+  state: State;
+  timestamp: Date;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Persistent REPL state (accumulates defines)
 // ─────────────────────────────────────────────────────────────────
@@ -1242,6 +1252,13 @@ interface ReplState {
   breakpoints: Breakpoint[];
   nextBreakpointId: number;
   debugCode?: string;  // Code being debugged
+
+  // Advanced debugger features
+  snapshots: Map<string, Snapshot>;  // Named snapshots
+  history: { step: number; state: State; control: string }[];  // Step history (limited)
+  maxHistory: number;  // Max history entries (default 100)
+  recordingEnabled: boolean;  // Toggle trace recording
+  running: boolean;  // Execution control flag
 }
 
 async function initReplState(): Promise<ReplState> {
@@ -1256,6 +1273,11 @@ async function initReplState(): Promise<ReplState> {
     trace: [],
     breakpoints: [],
     nextBreakpointId: 1,
+    snapshots: new Map(),
+    history: [],
+    maxHistory: 100,
+    recordingEnabled: true,
+    running: false,
   };
 }
 
@@ -1466,19 +1488,31 @@ function debugStep(replState: ReplState): { result: StepOutcome | null; replStat
     return { result: null, replState };
   }
 
+  // Save to history (limited)
+  if (replState.history.length >= replState.maxHistory) {
+    replState.history.shift();
+  }
+  replState.history.push({
+    step: replState.stepCount,
+    state: cloneState(replState.debugState),
+    control: controlToString(replState.debugState.control),
+  });
+
   const result = stepOnce(replState.debugState);
   replState.stepCount++;
 
   if (result.tag === "State") {
     replState.debugState = result.state;
 
-    // Record to trace
-    replState.trace.push({
-      step: replState.stepCount,
-      state: cloneState(result.state),
-      controlSummary: controlToString(result.state.control),
-      stackDepth: result.state.kont.length,
-    });
+    // Record to trace (if recording enabled)
+    if (replState.recordingEnabled) {
+      replState.trace.push({
+        step: replState.stepCount,
+        state: cloneState(result.state),
+        controlSummary: controlToString(result.state.control),
+        stackDepth: result.state.kont.length,
+      });
+    }
   } else if (result.tag === "Done") {
     console.log(`\n=== DONE at step ${replState.stepCount} ===`);
     console.log(`Result: ${valToSexp(result.value)}`);
@@ -1613,11 +1647,13 @@ async function processReplCommand(
     log("");
     log("  EVALUATION:");
     log("  (expr)         — evaluate expression immediately");
+    log("  :loadfile <path> — load and evaluate code from file");
     log("");
     log("  DEBUGGING:");
     log("  :debug (expr)  — load expression into debugger (step mode)");
     log("  :step [N]      — execute N steps (default 1)");
     log("  :run           — run until breakpoint or completion");
+    log("  :stop          — stop execution");
     log("  :goto <N>      — jump to step N in recorded trace");
     log("  :trace [s] [n] — show trace (start at s, show n steps)");
     log("  :state         — show current debug state");
@@ -1628,6 +1664,20 @@ async function processReplCommand(
     log("  :break effect <op> — break on effect operation");
     log("  :breaks            — list all breakpoints");
     log("  :delbreak <id>     — delete breakpoint");
+    log("  :toggle <id>       — toggle breakpoint on/off");
+    log("");
+    log("  SNAPSHOTS:");
+    log("  :save <name>       — save current state as snapshot");
+    log("  :restore <name>    — restore snapshot");
+    log("  :snapshots         — list all snapshots");
+    log("  :export <name> <file> — export snapshot to file");
+    log("");
+    log("  HISTORY & TIME TRAVEL:");
+    log("  :back [N]          — go back N steps in history");
+    log("  :history [N]       — show last N history entries");
+    log("  :record on|off     — toggle trace recording");
+    log("  :dump <file>       — save trace to file");
+    log("  :replay <file>     — load and replay dump");
     log("");
     log("  INSPECTION:");
     log("  :env           — show current environment bindings");
@@ -1778,6 +1828,261 @@ async function processReplCommand(
         log(`Breakpoint ${id} deleted.`);
       }
     }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :toggle - toggle breakpoint
+  if (trimmed.startsWith(":toggle ")) {
+    const parts = trimmed.split(/\s+/);
+    const id = parseInt(parts[1]);
+    if (isNaN(id)) {
+      log("Usage: :toggle <id>");
+    } else {
+      const bp = replState.breakpoints.find(b => b.id === id);
+      if (!bp) {
+        log(`Breakpoint ${id} not found.`);
+      } else {
+        bp.enabled = !bp.enabled;
+        log(`Breakpoint ${id} ${bp.enabled ? "enabled" : "disabled"}.`);
+      }
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :save - save snapshot
+  if (trimmed.startsWith(":save ")) {
+    const name = trimmed.slice(6).trim();
+    if (!name) {
+      log("Usage: :save <name>");
+    } else if (!replState.debugState) {
+      log("(no debug session - use :debug (expr) first)");
+    } else {
+      const snapshot: Snapshot = {
+        name,
+        step: replState.stepCount,
+        state: cloneState(replState.debugState),
+        timestamp: new Date(),
+      };
+      replState.snapshots.set(name, snapshot);
+      log(`Saved snapshot '${name}' at step ${replState.stepCount}`);
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :restore - restore snapshot
+  if (trimmed.startsWith(":restore ")) {
+    const name = trimmed.slice(9).trim();
+    if (!name) {
+      log("Usage: :restore <name>");
+    } else {
+      const snapshot = replState.snapshots.get(name);
+      if (!snapshot) {
+        log(`Snapshot '${name}' not found.`);
+      } else {
+        replState.debugState = cloneState(snapshot.state);
+        replState.stepCount = snapshot.step;
+        replState.debugMode = true;
+        log(`Loaded snapshot '${name}' (step ${replState.stepCount})`);
+        output.push(...getConsoleOutput(() => printDebugState(replState)));
+      }
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :snapshots - list snapshots
+  if (trimmed === ":snapshots" || trimmed === ":snaps") {
+    if (replState.snapshots.size === 0) {
+      log("No snapshots saved.");
+    } else {
+      log("\nSnapshots:");
+      for (const [name, snap] of replState.snapshots) {
+        log(`  ${name}: step ${snap.step} (${snap.timestamp.toISOString()})`);
+      }
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :export - export snapshot to file
+  if (trimmed.startsWith(":export ")) {
+    const parts = trimmed.slice(8).trim().split(/\s+/);
+    const name = parts[0];
+    const filepath = parts.slice(1).join(" ");
+    if (!name || !filepath) {
+      log("Usage: :export <snapshot-name> <filepath>");
+    } else {
+      const snapshot = replState.snapshots.get(name);
+      if (!snapshot) {
+        log(`Snapshot '${name}' not found.`);
+      } else {
+        const data = JSON.stringify({
+          name: snapshot.name,
+          step: snapshot.step,
+          timestamp: snapshot.timestamp.toISOString(),
+          controlTag: snapshot.state.control.tag,
+          stackDepth: snapshot.state.kont.length,
+        }, null, 2);
+        try {
+          fs.writeFileSync(filepath, data);
+          log(`Exported snapshot metadata to ${filepath}`);
+        } catch (err: any) {
+          log(`Error exporting: ${err.message}`);
+        }
+      }
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :back - go back in history
+  if (trimmed === ":back" || trimmed.startsWith(":back ")) {
+    const parts = trimmed.split(/\s+/);
+    const steps = parseInt(parts[1]) || 1;
+    if (replState.history.length === 0) {
+      log("No history available.");
+    } else {
+      const targetIdx = Math.max(0, replState.history.length - steps);
+      const entry = replState.history[targetIdx];
+      replState.debugState = cloneState(entry.state);
+      replState.stepCount = entry.step;
+      replState.debugMode = true;
+      replState.history = replState.history.slice(0, targetIdx);
+      log(`Rewound to step ${replState.stepCount}`);
+      output.push(...getConsoleOutput(() => printDebugState(replState)));
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :history - show history
+  if (trimmed === ":history" || trimmed === ":hist" || trimmed.startsWith(":history ") || trimmed.startsWith(":hist ")) {
+    const parts = trimmed.split(/\s+/);
+    const count = parseInt(parts[1]) || 10;
+    if (replState.history.length === 0) {
+      log("No history available.");
+    } else {
+      log(`\nHistory (last ${Math.min(count, replState.history.length)} steps):`);
+      const start = Math.max(0, replState.history.length - count);
+      for (let i = start; i < replState.history.length; i++) {
+        const h = replState.history[i];
+        log(`  [${h.step}] ${h.control}`);
+      }
+      log(`  [${replState.stepCount}] <current>`);
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :record - toggle recording
+  if (trimmed.startsWith(":record ")) {
+    const parts = trimmed.split(/\s+/);
+    const mode = parts[1];
+    if (mode === "on") {
+      replState.recordingEnabled = true;
+      log("Recording: ON");
+    } else if (mode === "off") {
+      replState.recordingEnabled = false;
+      log("Recording: OFF");
+      log("Warning: Without recording, 'goto' and 'dump' won't have new steps.");
+    } else {
+      log("Usage: :record on|off");
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :dump - save trace to file
+  if (trimmed.startsWith(":dump ")) {
+    const filepath = trimmed.slice(6).trim();
+    if (!filepath) {
+      log("Usage: :dump <filepath>");
+    } else if (replState.trace.length === 0) {
+      log("No trace to dump.");
+    } else {
+      const dumpData = {
+        version: 1,
+        code: replState.debugCode || "",
+        timestamp: new Date().toISOString(),
+        totalSteps: replState.trace.length,
+        traceSummary: replState.trace.map(t => ({
+          step: t.step,
+          control: t.controlSummary,
+          stackDepth: t.stackDepth,
+        })),
+      };
+      try {
+        fs.writeFileSync(filepath, JSON.stringify(dumpData, null, 2));
+        log(`Dumped trace summary to ${filepath} (${replState.trace.length} steps)`);
+        log("To replay: load the code and step through, or use ':replay <file>'");
+      } catch (err: any) {
+        log(`Error dumping: ${err.message}`);
+      }
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :replay - load and replay dump
+  if (trimmed.startsWith(":replay ")) {
+    const filepath = path.resolve(trimmed.slice(8).trim());
+    if (!filepath) {
+      log("Usage: :replay <filepath>");
+    } else if (!fs.existsSync(filepath)) {
+      log(`File not found: ${filepath}`);
+    } else {
+      try {
+        const content = fs.readFileSync(filepath, "utf8");
+        const data = JSON.parse(content);
+        if (!data.code) {
+          log("Dump file missing 'code' field - cannot replay.");
+        } else {
+          log(`Loading dump from: ${filepath}`);
+          log(`Original timestamp: ${data.timestamp}`);
+          log(`Total steps: ${data.totalSteps}`);
+          log("\nReplaying execution...");
+
+          // Load and run to completion
+          replState = debugLoadExpr(data.code, replState);
+          let count = 0;
+          while (replState.debugState && count < (data.totalSteps || 100000)) {
+            const { replState: newState } = debugStep(replState);
+            replState = newState;
+            count++;
+            if (!replState.debugState) break;
+          }
+
+          log(`\nReplay complete. ${replState.trace.length} steps recorded.`);
+          log("Use ':goto <step>' to jump to any step, or ':trace' to see the trace.");
+        }
+      } catch (err: any) {
+        log(`Error loading dump: ${err.message}`);
+      }
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :loadfile - load code from file
+  if (trimmed.startsWith(":loadfile ")) {
+    const filepath = path.resolve(trimmed.slice(10).trim());
+    if (!filepath) {
+      log("Usage: :loadfile <path>");
+    } else if (!fs.existsSync(filepath)) {
+      log(`File not found: ${filepath}`);
+    } else {
+      try {
+        const code = fs.readFileSync(filepath, "utf8");
+        log(`Loaded from: ${filepath}`);
+
+        // Evaluate the file content
+        const { value, replState: newState } = await evalInRepl(code, replState);
+        replState = newState;
+        log("=>", valToSexp(value));
+      } catch (err: any) {
+        log("error:", err.message);
+        replState.lastError = err;
+      }
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // :stop - stop execution
+  if (trimmed === ":stop") {
+    replState.running = false;
+    log("Stopped.");
     return { replState, output: output.join("\n"), shouldExit };
   }
 
@@ -2054,12 +2359,22 @@ async function main() {
         process.exit(1);
       }
 
-      const commands = fs.readFileSync(filePath, "utf8").split("\n");
+      // Read file and extract complete S-expressions (handles multi-line)
+      const fileContent = fs.readFileSync(filePath, "utf8");
+
+      // Strip comment lines before parsing
+      const cleanedContent = fileContent
+        .split("\n")
+        .filter(line => !line.trim().startsWith(";"))
+        .join("\n");
+
+      // Extract balanced S-expressions
+      const sexprs = extractSexpressions(cleanedContent);
       const outputs: string[] = [];
 
-      for (const cmd of commands) {
-        const trimmed = cmd.trim();
-        if (!trimmed || trimmed.startsWith(";")) continue; // skip empty and comments
+      for (const sexpr of sexprs) {
+        const trimmed = sexpr.trim();
+        if (!trimmed) continue;
 
         const { replState: newState, output, shouldExit } = await processReplCommand(trimmed, replState);
         replState = newState;

@@ -23,11 +23,16 @@
     "dist",
     "README.md"
   ],
+  "bin": {
+    "omega": "./bin/omega.ts"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "omega": "node dist/src/core/cli/omega.js",
+    "omega": "npx tsx bin/omega.ts",
+    "omega-repl": "npx tsx bin/omega-repl.ts",
+    "omega-debugger": "npx tsx bin/omega-debugger.ts",
     "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [

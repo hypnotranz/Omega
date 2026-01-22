@@ -79,3 +79,71 @@ features:
       - Find existing tests first, update them with doc references
       - All demos use semantic examples (not trivial values)
       - All cross-references resolve correctly
+  # Phase F: Session Serialization & Traces
+  - id: job-018a-serializer
+    title: "State Serialization (Foundation)"
+    type: implementation
+    requirements: "CLAUDE-JOBS/018a-STATE-SERIALIZATION.md"
+    acceptance_criteria:
+      - SerializeState and deserializeState pure functions
+      - Handles Maps (converts to arrays)
+      - Handles circular Ctx.parent references
+      - Handles Native functions (registry lookup)
+      - Handles all 18 Frame types
+      - Handles Resumptions (reconstructs invoke)
+      - All tests pass (npx vitest run test/session/serializer.spec.ts)
+
+  - id: job-018b-writer
+    title: "Session Writer and File Format"
+    type: implementation
+    depends_on:
+      - job-018a-serializer
+    requirements: "CLAUDE-JOBS/018b-SESSION-WRITER.md"
+    acceptance_criteria:
+      - SessionWriter class
+      - Event types (input, step, checkpoint, etc.)
+      - JSONL file format with checkpoints
+      - Index file with state and receipt lookup
+      - All tests pass (npx vitest run test/session/writer.spec.ts)
+
+  - id: job-018c-reader-jump
+    title: "Session Reader and Jump Controller"
+    type: implementation
+    depends_on:
+      - job-018a-serializer
+      - job-018b-writer
+    requirements: "CLAUDE-JOBS/018c-SESSION-READER-JUMP.md"
+    acceptance_criteria:
+      - SessionReader class
+      - JumpController class
+      - Checkpoint finding
+      - State restoration
+      - LLM receipt usage
+      - All tests pass (npx vitest run test/session/reader-jump.spec.ts)
+
+  - id: job-018d-renderer
+    title: "Pretty Renderer"
+    type: implementation
+    depends_on:
+      - job-018b-writer
+    requirements: "CLAUDE-JOBS/018d-PRETTY-RENDERER.md"
+    acceptance_criteria:
+      - renderEvent function
+      - renderTrace function
+      - Depth-based indentation
+      - Source labeling (REPL/EVAL/LLM/etc)
+      - All tests pass (npx vitest run test/session/render.spec.ts)
+
+  - id: job-018e-repl
+    title: "REPL Integration"
+    type: implementation
+    depends_on:
+      - job-018c-reader-jump
+      - job-018d-renderer
+    requirements: "CLAUDE-JOBS/018-SESSION-SERIALIZATION.md"
+    acceptance_criteria:
+      - New REPL commands (:session save/load/goto/trace/resume)
+      - Auto-save current session
+      - What-if exploration (jump and modify)
+      - All integration tests pass
+      - Manual verification of all workflows
