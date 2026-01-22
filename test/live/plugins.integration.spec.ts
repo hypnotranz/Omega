@@ -26,6 +26,8 @@ import type { OracleAdapter } from "../../src/core/oracle/adapter";
 import type { OracleResp, OracleReq, EnvRef, StateRef } from "../../src/core/oracle/protocol";
 import type { MeaningVal } from "../../src/core/oracle/meaning";
 
+const enableLiveTests = process.env.RUN_LIVE_TESTS === "true";
+
 // Setup real runtime and portal with pre-evaluated state
 async function setupRealRuntime(src: string) {
   const oracle = new ScriptedOracleAdapter();
@@ -123,11 +125,13 @@ async function runRealInference(
 
 // ANTHROPIC INTEGRATION TESTS
 describe("Anthropic Integration", () => {
-  const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
+  const hasApiKey = enableLiveTests && !!process.env.ANTHROPIC_API_KEY;
 
   beforeAll(() => {
-    if (!hasApiKey) {
-      console.log("  ANTHROPIC_API_KEY not set - skipping real API tests");
+    if (!enableLiveTests) {
+      console.log("  RUN_LIVE_TESTS is not 'true' - skipping Anthropic live tests");
+    } else if (!process.env.ANTHROPIC_API_KEY) {
+      console.log("  ANTHROPIC_API_KEY not set - skipping Anthropic live tests");
     }
   });
 
@@ -169,11 +173,13 @@ describe("Anthropic Integration", () => {
 
 // OPENAI INTEGRATION TESTS
 describe("OpenAI Integration", () => {
-  const hasApiKey = !!process.env.OPENAI_API_KEY;
+  const hasApiKey = enableLiveTests && !!process.env.OPENAI_API_KEY;
 
   beforeAll(() => {
-    if (!hasApiKey) {
-      console.log("  OPENAI_API_KEY not set - skipping real API tests");
+    if (!enableLiveTests) {
+      console.log("  RUN_LIVE_TESTS is not 'true' - skipping OpenAI live tests");
+    } else if (!process.env.OPENAI_API_KEY) {
+      console.log("  OPENAI_API_KEY not set - skipping OpenAI live tests");
     }
   });
 
@@ -276,7 +282,7 @@ describe("Ollama Integration", () => {
 
 // MODEL SELECTOR INTEGRATION
 describe("ModelSelector Integration", () => {
-  const hasAnyKey = !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
+  const hasAnyKey = enableLiveTests && !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
 
   it.skipIf(!hasAnyKey)("auto-detects available plugin", () => {
     const selector = createModelSelector();

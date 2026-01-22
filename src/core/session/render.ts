@@ -142,7 +142,8 @@ function formatTag(tag: string): string {
 }
 
 function truncate(value: string, max: number): string {
-  if (max <= ELLIPSIS.length) return value.slice(0, max);
+  if (!isFinite(max) || max <= 0) return "";
   if (value.length <= max) return value;
+  if (max <= ELLIPSIS.length) return ELLIPSIS.slice(0, max);
   return `${value.slice(0, max - ELLIPSIS.length)}${ELLIPSIS}`;
 }

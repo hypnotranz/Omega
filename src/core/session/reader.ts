@@ -78,6 +78,10 @@ export class SessionReader {
     return this.index.receipts[key];
   }
 
+  getAllEvents(): SessionEvent[] {
+    return this.events;
+  }
+
   getEventsInRange(startSeq: number, endSeq: number): SessionEvent[] {
     return this.events.filter(e => {
       if (!("seq" in e)) return false;

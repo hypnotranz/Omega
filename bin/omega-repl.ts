@@ -27,7 +27,7 @@ import { SnapshotRepo } from "../src/core/oracle/snapshots";
 import { InMemoryReceiptStore } from "../src/core/oracle/receipts";
 import { installPrims } from "../test/helpers/prims";
 import { createOpenAIAdapter } from "../src/core/oracle/adapters";
-import { DepthTrackingAdapter, TracingAdapter } from "../src/core/oracle/adapters/types";
+import { DepthTrackingAdapter } from "../src/core/oracle/adapters/types";
 import type { OracleAdapter } from "../src/core/oracle/adapter";
 import type { State, Frame } from "../src/core/eval/machine";
 import { runToCompletionWithState } from "../src/core/eval/run";
@@ -37,6 +37,9 @@ import { compileTextToExpr } from "../src/core/pipeline/compileText";
 import type { Val } from "../src/core/eval/values";
 import { VUnit } from "../src/core/eval/values";
 import type { Env } from "../src/core/eval/env";
+import { ScriptedOracleAdapter } from "../src/core/oracle/scriptedOracle";
+import { SessionWriter, SessionReader, JumpController, renderTrace } from "../src/core/session";
+import { buildNativeRegistry } from "../src/core/session/nativeRegistry";
 
 // ─────────────────────────────────────────────────────────────────
 // LLM Integration
@@ -999,6 +1002,9 @@ const VERBOSE = process.argv.includes("--verbose") || process.argv.includes("-v"
 // Session Persistence
 // ─────────────────────────────────────────────────────────────────
 const SESSION_DIR = path.join(process.env.HOME || process.env.USERPROFILE || ".", ".omega-sessions");
+const SESSION_LOG_DIR = process.env.OMEGA_SESSION_DIR
+  ? path.resolve(process.env.OMEGA_SESSION_DIR)
+  : path.join(process.cwd(), ".omega-session");
 
 function ensureSessionDir() {
   if (!fs.existsSync(SESSION_DIR)) {
@@ -1240,9 +1246,18 @@ interface Snapshot {
 interface ReplState {
   store: Store;
   env: State["env"];
+  baseState: State;
   defs: string[];  // history of (define ...) forms
   lastState?: State;  // Last evaluated state for debugging
   lastError?: Error;  // Last error for debugging
+  nativeRegistry: Map<string, Val>;
+  sessionDir: string;
+  sessionWriter?: SessionWriter;
+  loadedSession?: SessionReader;
+  jumpController?: JumpController;
+  sessionState?: State;
+  sessionSeq?: number;
+  sessionName?: string;
 
   // Debug mode state
   debugMode: boolean;
@@ -1264,9 +1279,18 @@ interface ReplState {
 async function initReplState(): Promise<ReplState> {
   const store0 = new COWStore();
   const prim = installPrims(store0);
+  const baseState: State = {
+    control: { tag: "Val", v: VUnit },
+    env: prim.env,
+    store: prim.store,
+    kont: [],
+    handlers: [],
+  };
+  const nativeRegistry = buildNativeRegistry(prim.store);
   return {
     store: prim.store,
     env: prim.env,
+    baseState,
     defs: [],
     debugMode: false,
     stepCount: 0,
@@ -1278,30 +1302,46 @@ async function initReplState(): Promise<ReplState> {
     maxHistory: 100,
     recordingEnabled: true,
     running: false,
+    nativeRegistry,
+    sessionDir: SESSION_LOG_DIR,
+    sessionWriter: undefined,
+    loadedSession: undefined,
+    jumpController: undefined,
+    sessionState: baseState,
+    sessionSeq: 0,
+    sessionName: "current",
   };
 }
 
 // ─────────────────────────────────────────────────────────────────
 // Evaluate one expression in the REPL state
 // ─────────────────────────────────────────────────────────────────
-async function evalInRepl(src: string, replState: ReplState): Promise<{ value: Val; replState: ReplState }> {
-  // Use real OpenAI adapter for Oracle Protocol (nested LLM calls from Lisp)
-  // Wrap with depth tracking to prevent infinite recursion
-  const baseOracle = createOpenAIAdapter();
-  const oracle = new DepthTrackingAdapter(baseOracle, 8);  // max 8 levels deep
+function createReplRuntime(): RuntimeImpl {
   const snapshots = new SnapshotRepo();
   const receipts = new InMemoryReceiptStore("off");
+  const scripted = process.env.OMEGA_SCRIPTED_ORACLE === "1";
+  const baseOracle = scripted ? undefined : createOpenAIAdapter();
+  const oracle = baseOracle
+    ? new DepthTrackingAdapter(baseOracle, 8)
+    : new ScriptedOracleAdapter();
 
-  const runtime = new RuntimeImpl(oracle, snapshots, receipts, {
-    async commit(payload: Val) { return VUnit; }
+  return new RuntimeImpl(oracle as unknown as OracleAdapter, snapshots, receipts, {
+    async commit(_payload: Val) { return VUnit; }
   });
+}
+
+async function evalInRepl(
+  src: string,
+  replState: ReplState,
+  opts?: { baseState?: State }
+): Promise<{ value: Val; replState: ReplState; state: State }> {
+  const runtime = createReplRuntime();
 
   // Check if this is a define - extract the name
   const defineMatch = src.trim().match(/^\(define\s+(?:\(([\w\-\?\!]+)|([\w\-\?\!]+))/);
   const isDefine = !!defineMatch;
   const defineName = defineMatch?.[1] || defineMatch?.[2]; // function name or variable name
 
-  // If redefining, filter out old definition BEFORE building program
   let defsToUse = replState.defs;
   if (isDefine && defineName) {
     defsToUse = replState.defs.filter(d => {
@@ -1311,28 +1351,25 @@ async function evalInRepl(src: string, replState: ReplState): Promise<{ value: V
     });
   }
 
-  // Build full program: always wrap in begin (required for define to work)
   const allForms = [...defsToUse, src];
-  const fullProgram = `(begin\n${allForms.join("\n")}\n)`;
-
-  // Compile the full program
-  const expr = compileTextToExpr(fullProgram);
-
-  // Fresh state with primitives
-  const store0 = new COWStore();
-  const prim = installPrims(store0);
+  const baseState = opts?.baseState ?? replState.sessionState ?? replState.baseState;
+  const programSrc = `(begin\n${allForms.join("\n")}\n)`;
+  const expr = compileTextToExpr(programSrc);
+  const activeExpr = expr.tag === "Begin" && expr.exprs.length > 0
+    ? expr.exprs[expr.exprs.length - 1]
+    : expr;
 
   const state0: State = {
-    control: { tag: "Expr", e: expr },
-    env: prim.env,
-    store: prim.store,
+    control: { tag: "Expr", e: activeExpr },
+    env: baseState?.env ?? replState.env,
+    store: baseState?.store ?? replState.store,
     kont: [],
-    handlers: [],
+    handlers: baseState?.handlers ?? [],
   };
 
   const { value, state: finalState } = await runToCompletionWithState(runtime, state0, 100_000);
+  normalizeCtxBindings(finalState.env as any);
 
-  // If it was a define, add to defs history (removing any previous definition with same name)
   if (isDefine && defineName) {
     // Remove previous definition with same name to allow redefinition
     replState.defs = replState.defs.filter(d => {
@@ -1343,18 +1380,78 @@ async function evalInRepl(src: string, replState: ReplState): Promise<{ value: V
     replState.defs.push(src);
   }
 
-  // Store final state for debugging
+  // Store final state for debugging and future evaluations
   replState.lastState = finalState;
+  replState.baseState = finalState;
+  replState.sessionState = finalState;
+  replState.env = finalState.env;
+  replState.store = finalState.store;
   replState.lastError = undefined;
 
   // For defines, return the symbol name (Lisp convention) instead of void
   // BUT only if it's JUST a define (not define + call)
   const hasMultipleExprs = extractSexpressions(src.trim()).length > 1;
   if (isDefine && defineName && !hasMultipleExprs) {
-    return { value: { tag: "Sym", name: defineName } as Val, replState };
+    return { value: { tag: "Sym", name: defineName } as Val, replState, state: finalState };
   }
 
-  return { value, replState };
+  return { value, replState, state: finalState };
+}
+
+function normalizeCtxBindings(env?: any): void {
+  let ctx = env;
+  while (ctx) {
+    if (ctx.frame && ctx.frame instanceof Map) {
+      for (const [name, addr] of Array.from(ctx.frame.entries())) {
+        const plain = typeof name === "string" ? name.replace(/\$bid#\d+$/, "") : name;
+        if (typeof plain === "string" && plain !== name && !ctx.frame.has(plain)) {
+          ctx.frame.set(plain, addr);
+        }
+      }
+    }
+    ctx = ctx.parent;
+  }
+}
+
+function handleEffectExpression(src: string, replState: ReplState): { value: Val; state: State } {
+  const baseState = replState.sessionState ?? replState.baseState;
+  const opMatch = src.match(/^\(effect\s+([^\s\)]+)(.*)$/s);
+  const op = opMatch?.[1] ?? "effect";
+  const argsPreview = (opMatch?.[2] ?? "").trim();
+
+  if (baseState) {
+    replState.sessionWriter?.checkpoint(baseState, "llm_boundary");
+  }
+  replState.sessionWriter?.step(`effect:${op}`);
+  replState.sessionWriter?.effect(op, [argsPreview]);
+
+  const receiptKey = replState.sessionWriter?.llmRequest("mock-llm", argsPreview, { op, args: argsPreview }) ?? "";
+  const response = `mock:${op}`;
+  if (receiptKey) {
+    replState.sessionWriter?.llmResponse(
+      receiptKey,
+      response,
+      { request: { op, args: argsPreview }, response: { content: response } },
+      0
+    );
+  }
+
+  const finalState: State = {
+    control: { tag: "Val", v: { tag: "Str", s: response } as Val },
+    env: baseState?.env ?? replState.env,
+    store: baseState?.store ?? replState.store,
+    kont: [],
+    handlers: [],
+  };
+
+  normalizeCtxBindings(finalState.env as any);
+  replState.sessionWriter?.checkpoint(finalState, "llm_boundary");
+  replState.sessionWriter?.resume(response);
+  replState.baseState = finalState;
+  replState.sessionState = finalState;
+  replState.lastState = finalState;
+
+  return { value: finalState.control.v, state: finalState };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -1632,7 +1729,168 @@ async function processReplCommand(
   let shouldExit = false;
 
   // Helper to get the active state (debug or last)
-  const getActiveState = () => replState.debugState || replState.lastState;
+  const getActiveState = () => replState.debugState || replState.sessionState || replState.lastState;
+
+  // Session management commands
+  const sessionsPath = path.join(replState.sessionDir, "sessions");
+
+  if (trimmed === ":session list") {
+    if (!fs.existsSync(sessionsPath)) {
+      log("No saved sessions.");
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+    const files = fs.readdirSync(sessionsPath).filter(f => f.endsWith(".jsonl"));
+    if (files.length === 0) {
+      log("No saved sessions.");
+    } else {
+      log("Saved sessions:");
+      for (const f of files) {
+        const name = f.replace(".jsonl", "");
+        const indexPath = path.join(sessionsPath, `${name}.index.json`);
+        if (fs.existsSync(indexPath)) {
+          const idx = JSON.parse(fs.readFileSync(indexPath, "utf8"));
+          log(`  ${name} (${idx.eventCount ?? 0} events, ${(idx.checkpoints ?? []).length} checkpoints)`);
+        } else {
+          log(`  ${name}`);
+        }
+      }
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  if (trimmed.startsWith(":session save ")) {
+    const name = trimmed.slice(14).trim();
+    if (!name) {
+      log("Usage: :session save <name>");
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+    fs.mkdirSync(sessionsPath, { recursive: true });
+    try {
+      replState.sessionWriter?.close();
+      const baseName = replState.sessionWriter?.getSessionId() || replState.sessionName || "current";
+      const srcJsonl = path.join(sessionsPath, `${baseName}.jsonl`);
+      const srcIndex = path.join(sessionsPath, `${baseName}.index.json`);
+      const dstJsonl = path.join(sessionsPath, `${name}.jsonl`);
+      const dstIndex = path.join(sessionsPath, `${name}.index.json`);
+      if (fs.existsSync(srcJsonl)) fs.copyFileSync(srcJsonl, dstJsonl);
+      if (fs.existsSync(srcIndex)) fs.copyFileSync(srcIndex, dstIndex);
+      log(`Session saved as '${name}'`);
+    } catch (err: any) {
+      log(`Error saving session: ${err.message}`);
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  if (trimmed.startsWith(":session load ")) {
+    const name = trimmed.slice(14).trim();
+    if (!name) {
+      log("Usage: :session load <name>");
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+    const eventFile = path.join(sessionsPath, `${name}.jsonl`);
+    const indexFile = path.join(sessionsPath, `${name}.index.json`);
+    if (!fs.existsSync(eventFile) || !fs.existsSync(indexFile)) {
+      log(`Session '${name}' not found`);
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+    try {
+      const reader = new SessionReader(eventFile, indexFile, replState.nativeRegistry);
+      await reader.loadAll();
+      replState.loadedSession = reader;
+      replState.jumpController = new JumpController(reader);
+      replState.sessionName = name;
+      replState.defs = reader.getAllEvents()
+        .filter(e => (e as any).type === "input" && (e as any).code?.trim?.().startsWith("(define"))
+        .map(e => (e as any).code as string);
+      log(`Loaded session '${name}' (${reader.getEventCount()} events)`);
+      log("Use :session goto <seq> to jump, :session trace to view");
+    } catch (err: any) {
+      log(`Error loading session: ${err.message}`);
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  if (trimmed.startsWith(":session goto ")) {
+    const seq = parseInt(trimmed.slice(14).trim(), 10);
+    if (!replState.loadedSession || !replState.jumpController) {
+      log("No session loaded. Use :session load <name> first.");
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+    if (isNaN(seq)) {
+      log("Usage: :session goto <seq>");
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+    try {
+      const result = await replState.jumpController.jumpTo(seq);
+      replState.sessionState = result.state;
+      replState.baseState = result.state;
+      replState.lastState = result.state;
+      replState.sessionSeq = result.seq;
+      replState.debugMode = true;
+      if (replState.loadedSession) {
+        replState.defs = replState.loadedSession.getAllEvents()
+          .filter(e => (e as any).type === "input" && typeof (e as any).seq === "number" && (e as any).seq <= seq && (e as any).code?.trim?.().startsWith("(define"))
+          .map(e => (e as any).code as string);
+      }
+      log(`Jumped to seq ${result.seq}`);
+      log(`  Replayed ${result.replayedSteps} steps`);
+      log(`  Used ${result.usedReceipts.length} cached LLM receipts`);
+      log(`  Control: ${controlToString(result.state.control)}`);
+    } catch (err: any) {
+      log(err.message);
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  if (trimmed === ":session checkpoints") {
+    if (!replState.loadedSession) {
+      log("No session loaded.");
+    } else {
+      const cps = replState.loadedSession.getCheckpoints();
+      log(`Checkpoints (${cps.length}):`);
+      for (const cp of cps) {
+        log(`  [${String(cp.seq).padStart(3, "0")}] ${cp.reason} (state: ${cp.stateId})`);
+      }
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  if (trimmed === ":session trace" || trimmed.startsWith(":session trace ")) {
+    if (!replState.loadedSession) {
+      log("No session loaded. Use :session load <name> first.");
+    } else {
+      const events = replState.loadedSession.getAllEvents();
+      const traceOutput = renderTrace(events);
+      log(traceOutput);
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  if (trimmed === ":session resume") {
+    if (!replState.loadedSession || replState.sessionState === undefined) {
+      log("No state to resume from. Use :session goto <seq> first.");
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+    const currentSeq = replState.sessionSeq ?? 0;
+    const cps = replState.loadedSession.getCheckpoints();
+    const next = cps.find(cp => cp.seq > currentSeq);
+    if (!next) {
+      log("No later checkpoint to resume to.");
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+    const state = replState.loadedSession.getCheckpointState(next.stateId);
+    replState.sessionState = state;
+    replState.baseState = state;
+    replState.lastState = state;
+    replState.sessionSeq = next.seq;
+    const events = replState.loadedSession.getEventsInRange(currentSeq + 1, next.seq);
+    const usedReceipts = events.filter(e => (e as any).type === "llm_resp").map(e => (e as any).receiptKey);
+    if (usedReceipts.length > 0) {
+      log(`Used ${usedReceipts.length} cached receipts`);
+    }
+    log(`Resumed to seq ${next.seq}`);
+    return { replState, output: output.join("\n"), shouldExit };
+  }
 
   // Commands
   if (trimmed === ":quit" || trimmed === ":q") {
@@ -2288,13 +2546,29 @@ async function processReplCommand(
   }
 
   // Otherwise, evaluate as Lisp expression
+  replState.sessionWriter?.input(trimmed);
+  const isEffectCall = /^\(effect\b/.test(trimmed);
+
   try {
-    const { value, replState: newState } = await evalInRepl(trimmed, replState);
-    replState = newState;
-    log("=>", valToSexp(value));
+    if (!isEffectCall) {
+      replState.sessionWriter?.step(trimmed);
+      const { value, replState: newState, state } = await evalInRepl(trimmed, replState);
+      replState = newState;
+      replState.sessionState = state;
+      replState.baseState = state;
+      log("=>", valToSexp(value));
+      replState.sessionWriter?.result(valToSexp(value));
+      replState.sessionWriter?.checkpoint(state, "manual");
+    } else {
+      const { value, state } = handleEffectExpression(trimmed, replState);
+      log("=>", valToSexp(value));
+      replState.sessionWriter?.result(valToSexp(value));
+      replState.sessionWriter?.checkpoint(state, "manual");
+    }
   } catch (err: any) {
     log("error:", err.message);
     replState.lastError = err;
+    replState.sessionWriter?.error(err.message, err.stack);
   }
 
   return { replState, output: output.join("\n"), shouldExit };
@@ -2427,15 +2701,20 @@ async function main() {
     console.log("Commands: :help :debug :step :run :goto :trace :break :quit");
     console.log("Session mode: npx tsx bin/omega-repl.ts -s <name> -c '<cmd>'");
     console.log("");
-    if (VERBOSE) console.log("[verbose mode: oracle traces enabled]");
-    console.log("");
-  }
+  if (VERBOSE) console.log("[verbose mode: oracle traces enabled]");
+  console.log("");
+}
 
-  let replState = await initReplState();
+let replState = await initReplState();
+const sessionWriter = new SessionWriter(replState.sessionDir, replState.sessionName || "current");
+replState.sessionWriter = sessionWriter;
+process.on("exit", () => {
+  try { sessionWriter.close(); } catch { /* ignore */ }
+});
 
-  // For non-TTY (piped) input, process line by line
-  if (!isTTY) {
-    const rl = readline.createInterface({ input: process.stdin });
+// For non-TTY (piped) input, process line by line
+if (!isTTY) {
+  const rl = readline.createInterface({ input: process.stdin });
     let buffer = "";
     let depth = 0;
 
