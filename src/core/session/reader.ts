@@ -57,10 +57,9 @@ export class SessionReader {
   }
 
   findCheckpointBefore(targetSeq: number): CheckpointView | undefined {
-    const targetActualSeq = this.toActualSeq(targetSeq);
     let best: CheckpointIndex | undefined;
     for (const cp of this.index.checkpoints) {
-      if (cp.seq <= targetActualSeq && (!best || cp.seq > best.seq)) {
+      if (cp.seq < targetSeq && (!best || cp.seq > best.seq)) {
         best = cp;
       }
     }
@@ -88,14 +87,6 @@ export class SessionReader {
   }
 
   private decorateCheckpoint(cp: CheckpointIndex): CheckpointView {
-    return { ...cp, rawSeq: cp.seq, seq: this.toLogicalSeq(cp.seq) };
-  }
-
-  private toLogicalSeq(seq: number): number {
-    return seq + 1;
-  }
-
-  private toActualSeq(seq: number): number {
-    return Math.max(0, seq - 1);
+    return { ...cp, rawSeq: cp.seq };
   }
 }

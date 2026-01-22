@@ -20,7 +20,7 @@ export class JumpController {
     }
 
     const checkpointActualSeq = this.getCheckpointActualSeq(checkpoint);
-    const targetActualSeq = this.toActualSeq(targetSeq);
+    const targetActualSeq = targetSeq;
     const state = this.reader.getCheckpointState(checkpoint.stateId);
 
     if (checkpoint.seq === targetSeq) {
@@ -55,10 +55,6 @@ export class JumpController {
   }
 
   private getCheckpointActualSeq(cp: CheckpointView): number {
-    return cp.rawSeq ?? this.toActualSeq(cp.seq);
-  }
-
-  private toActualSeq(seq: number): number {
-    return Math.max(0, seq - 1);
+    return cp.rawSeq ?? cp.seq;
   }
 }
