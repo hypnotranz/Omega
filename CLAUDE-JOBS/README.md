@@ -69,6 +69,15 @@ These jobs implement the architecture specified in `ARCHITECTURE-LANGUAGES-*.md`
 |--------|-------|----------|--------|------------|
 | [017](./017-SEPARATE-CLI-TOOLS.md) | Unify CLI into Single `omega` Command | P2 - Cleanup | NOT STARTED | - |
 
+### Phase G: Session Serialization & Replay
+
+| Job ID | Title | Priority | Status | Depends On |
+|--------|-------|----------|--------|------------|
+| [018a](./018a-STATE-SERIALIZATION.md) | State Serialization (Foundation) | P1 - Core Infrastructure | NOT STARTED | - |
+| [018b](./018b-SESSION-WRITER.md) | Session Writer and File Format | P1 - Core Infrastructure | DONE | 018a |
+| [018c](./018c-SESSION-READER-JUMP.md) | Session Reader and Jump Controller | P1 - Core Infrastructure | NOT STARTED | 018a, 018b |
+| [018d](./018d-PRETTY-RENDERER.md) | Pretty Renderer | P2 - Nice to Have | NOT STARTED | 018b |
+
 ---
 
 ## Dependency Graph
