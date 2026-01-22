@@ -7,6 +7,11 @@ import { sha256JSON } from "../artifacts/hash";
 
 const PREVIEW_LIMIT = 200;
 
+export type SessionWriterOptions = {
+  append?: boolean;
+  index?: SessionIndex;
+};
+
 export class SessionWriter {
   private sessionId: string;
   private sessionDir: string;
@@ -20,9 +25,10 @@ export class SessionWriter {
   private receipts: Record<string, any> = {};
   private byteOffset = 0;
 
-  constructor(sessionDir: string, sessionId?: string) {
+  constructor(sessionDir: string, sessionId?: string, options: SessionWriterOptions = {}) {
     this.sessionDir = sessionDir;
     this.sessionId = sessionId || `session-${Date.now().toString(36)}`;
+    const append = options.append === true;
 
     // Ensure directories exist before writing any files.
     fs.mkdirSync(path.join(sessionDir, "sessions"), { recursive: true });
@@ -30,6 +36,37 @@ export class SessionWriter {
 
     this.eventFile = path.join(sessionDir, "sessions", `${this.sessionId}.jsonl`);
     this.indexFile = path.join(sessionDir, "sessions", `${this.sessionId}.index.json`);
+
+    const eventExists = fs.existsSync(this.eventFile);
+
+    if (append && eventExists) {
+      const index = options.index ?? (fs.existsSync(this.indexFile)
+        ? JSON.parse(fs.readFileSync(this.indexFile, "utf8"))
+        : undefined);
+      if (index) {
+        this.seq = index.eventCount ?? 0;
+        this.checkpoints = index.checkpoints ?? [];
+        this.states = index.states ?? {};
+        this.receipts = index.receipts ?? {};
+      } else {
+        try {
+          const content = fs.readFileSync(this.eventFile, "utf8");
+          let maxSeq = -1;
+          for (const line of content.split(/\r?\n/)) {
+            if (!line.trim()) continue;
+            const event = JSON.parse(line);
+            if (typeof event?.seq === "number") {
+              maxSeq = Math.max(maxSeq, event.seq);
+            }
+          }
+          this.seq = maxSeq + 1;
+        } catch {
+          this.seq = 0;
+        }
+      }
+      this.byteOffset = fs.statSync(this.eventFile).size;
+      return;
+    }
 
     // Start a fresh event log for this session.
     fs.writeFileSync(this.eventFile, "");

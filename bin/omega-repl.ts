@@ -39,7 +39,9 @@ import { VUnit } from "../src/core/eval/values";
 import type { Env } from "../src/core/eval/env";
 import { ScriptedOracleAdapter } from "../src/core/oracle/scriptedOracle";
 import { SessionWriter, SessionReader, JumpController, renderTrace } from "../src/core/session";
+import type { SessionIndex } from "../src/core/session";
 import { buildNativeRegistry } from "../src/core/session/nativeRegistry";
+import { buildSolverRegistry } from "../src/core/session/solverRegistry";
 
 // ─────────────────────────────────────────────────────────────────
 // LLM Integration
@@ -1251,6 +1253,7 @@ interface ReplState {
   lastState?: State;  // Last evaluated state for debugging
   lastError?: Error;  // Last error for debugging
   nativeRegistry: Map<string, Val>;
+  solverRegistry: Map<string, Val>;
   sessionDir: string;
   sessionWriter?: SessionWriter;
   loadedSession?: SessionReader;
@@ -1287,6 +1290,7 @@ async function initReplState(): Promise<ReplState> {
     handlers: [],
   };
   const nativeRegistry = buildNativeRegistry(prim.store);
+  const solverRegistry = buildSolverRegistry(prim.store);
   return {
     store: prim.store,
     env: prim.env,
@@ -1303,12 +1307,13 @@ async function initReplState(): Promise<ReplState> {
     recordingEnabled: true,
     running: false,
     nativeRegistry,
+    solverRegistry,
     sessionDir: SESSION_LOG_DIR,
     sessionWriter: undefined,
     loadedSession: undefined,
     jumpController: undefined,
     sessionState: baseState,
-    sessionSeq: 0,
+    sessionSeq: undefined,
     sessionName: "current",
   };
 }
@@ -1422,6 +1427,7 @@ function handleEffectExpression(src: string, replState: ReplState): { value: Val
   if (baseState) {
     replState.sessionWriter?.checkpoint(baseState, "llm_boundary");
   }
+  replState.sessionWriter?.pushDepth();
   replState.sessionWriter?.step(`effect:${op}`);
   replState.sessionWriter?.effect(op, [argsPreview]);
 
@@ -1447,6 +1453,7 @@ function handleEffectExpression(src: string, replState: ReplState): { value: Val
   normalizeCtxBindings(finalState.env as any);
   replState.sessionWriter?.checkpoint(finalState, "llm_boundary");
   replState.sessionWriter?.resume(response);
+  replState.sessionWriter?.popDepth();
   replState.baseState = finalState;
   replState.sessionState = finalState;
   replState.lastState = finalState;
@@ -1781,6 +1788,103 @@ async function processReplCommand(
     return { replState, output: output.join("\n"), shouldExit };
   }
 
+  if (trimmed.startsWith(":session fork ")) {
+    const name = trimmed.slice(14).trim();
+    if (!name) {
+      log("Usage: :session fork <name>");
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+    fs.mkdirSync(sessionsPath, { recursive: true });
+    const sourceName = replState.loadedSession
+      ? (replState.sessionName || "current")
+      : (replState.sessionWriter?.getSessionId() || replState.sessionName || "current");
+    const sourceJsonl = path.join(sessionsPath, `${sourceName}.jsonl`);
+    const sourceIndex = path.join(sessionsPath, `${sourceName}.index.json`);
+
+    if (!fs.existsSync(sourceJsonl) || !fs.existsSync(sourceIndex)) {
+      log(`Session '${sourceName}' not found`);
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+
+    try {
+      const rawLines = fs.readFileSync(sourceJsonl, "utf8").split(/\r?\n/).filter(Boolean);
+      const events = rawLines.map(line => JSON.parse(line));
+      const maxSeq = events.reduce((max, e) => (typeof (e as any).seq === "number" ? Math.max(max, (e as any).seq) : max), -1);
+      const cutoffSeq = replState.sessionSeq !== undefined ? Math.min(replState.sessionSeq, maxSeq) : maxSeq;
+      const trimmedEvents = events.filter(e => !("seq" in e) || (e as any).seq <= cutoffSeq);
+
+      if (trimmedEvents.length > 0 && (trimmedEvents[0] as any).type === "session") {
+        trimmedEvents[0] = { ...(trimmedEvents[0] as any), id: name, created: new Date().toISOString() };
+      } else {
+        trimmedEvents.unshift({ type: "session", version: 1, id: name, created: new Date().toISOString() });
+      }
+
+      const forkJsonl = path.join(sessionsPath, `${name}.jsonl`);
+      const checkpointOffsets = new Map<number, number>();
+      let offset = 0;
+      const lines: string[] = [];
+      for (const event of trimmedEvents) {
+        const line = `${JSON.stringify(event)}\n`;
+        if ((event as any).type === "checkpoint" && typeof (event as any).seq === "number") {
+          checkpointOffsets.set((event as any).seq, offset);
+        }
+        lines.push(line);
+        offset += Buffer.byteLength(line, "utf8");
+      }
+      fs.writeFileSync(forkJsonl, lines.join(""));
+
+      const indexData = JSON.parse(fs.readFileSync(sourceIndex, "utf8"));
+      const checkpoints = (indexData.checkpoints ?? [])
+        .filter((cp: any) => cp.seq <= cutoffSeq)
+        .map((cp: any) => ({
+          ...cp,
+          byteOffset: checkpointOffsets.get(cp.seq) ?? cp.byteOffset,
+        }));
+      const stateIds = new Set(checkpoints.map((cp: any) => cp.stateId));
+      const states: Record<string, any> = {};
+      for (const id of stateIds) {
+        if (indexData.states?.[id] !== undefined) {
+          states[id] = indexData.states[id];
+        }
+      }
+      const receiptKeys = new Set(trimmedEvents.filter(e => (e as any).type === "llm_resp").map(e => (e as any).receiptKey));
+      const receipts: Record<string, any> = {};
+      for (const key of receiptKeys) {
+        if (indexData.receipts?.[key] !== undefined) {
+          receipts[key] = indexData.receipts[key];
+        }
+      }
+
+      const forkIndex: SessionIndex = {
+        sessionId: name,
+        eventCount: cutoffSeq >= 0 ? cutoffSeq + 1 : 0,
+        checkpoints,
+        states,
+        receipts,
+      };
+
+      const forkIndexPath = path.join(sessionsPath, `${name}.index.json`);
+      fs.writeFileSync(forkIndexPath, JSON.stringify(forkIndex, null, 2));
+
+      const forkReader = new SessionReader(forkJsonl, forkIndexPath, replState.nativeRegistry, replState.solverRegistry);
+      await forkReader.loadAll();
+
+      replState.loadedSession = forkReader;
+      replState.jumpController = new JumpController(forkReader);
+
+      replState.sessionWriter?.close();
+      replState.sessionWriter = new SessionWriter(replState.sessionDir, name, { append: true, index: forkIndex });
+      replState.sessionName = name;
+      replState.sessionSeq = cutoffSeq >= 0 ? cutoffSeq : undefined;
+
+      log(`Session forked as '${name}'`);
+    } catch (err: any) {
+      log(`Error forking session: ${err.message}`);
+    }
+
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
   if (trimmed.startsWith(":session load ")) {
     const name = trimmed.slice(14).trim();
     if (!name) {
@@ -1794,7 +1898,7 @@ async function processReplCommand(
       return { replState, output: output.join("\n"), shouldExit };
     }
     try {
-      const reader = new SessionReader(eventFile, indexFile, replState.nativeRegistry);
+      const reader = new SessionReader(eventFile, indexFile, replState.nativeRegistry, replState.solverRegistry);
       await reader.loadAll();
       replState.loadedSession = reader;
       replState.jumpController = new JumpController(reader);
@@ -1860,7 +1964,8 @@ async function processReplCommand(
       log("No session loaded. Use :session load <name> first.");
     } else {
       const events = replState.loadedSession.getAllEvents();
-      const traceOutput = renderTrace(events);
+      const verbose = trimmed.includes("--verbose") || trimmed.includes("-v");
+      const traceOutput = renderTrace(events, verbose ? { showTime: true } : undefined);
       log(traceOutput);
     }
     return { replState, output: output.join("\n"), shouldExit };
@@ -1906,6 +2011,16 @@ async function processReplCommand(
     log("  EVALUATION:");
     log("  (expr)         — evaluate expression immediately");
     log("  :loadfile <path> — load and evaluate code from file");
+    log("");
+    log("  SESSION:");
+    log("  :session list            - list saved sessions");
+    log("  :session save <name>     - save current session");
+    log("  :session fork <name>     - fork session from current point");
+    log("  :session load <name>     - load a saved session");
+    log("  :session goto <seq>      - jump to a checkpoint or event");
+    log("  :session trace           - render session trace");
+    log("  :session checkpoints     - list checkpoints");
+    log("  :session resume          - resume to next checkpoint");
     log("");
     log("  DEBUGGING:");
     log("  :debug (expr)  — load expression into debugger (step mode)");
@@ -2706,47 +2821,51 @@ async function main() {
 }
 
 let replState = await initReplState();
-const sessionWriter = new SessionWriter(replState.sessionDir, replState.sessionName || "current");
-replState.sessionWriter = sessionWriter;
+replState.sessionWriter = new SessionWriter(replState.sessionDir, replState.sessionName || "current");
 process.on("exit", () => {
-  try { sessionWriter.close(); } catch { /* ignore */ }
+  try { replState.sessionWriter?.close(); } catch { /* ignore */ }
 });
 
 // For non-TTY (piped) input, process line by line
-if (!isTTY) {
-  const rl = readline.createInterface({ input: process.stdin });
+  if (!isTTY) {
+    const rl = readline.createInterface({ input: process.stdin });
     let buffer = "";
     let depth = 0;
 
-    for await (const line of rl) {
-      const trimmed = line.trim();
-      if (trimmed === ":quit" || trimmed === ":q") break;
-      if (trimmed === "" || trimmed.startsWith(";")) continue; // skip empty and comments
+    try {
+      for await (const line of rl) {
+        const trimmed = line.trim();
+        if (trimmed === ":quit" || trimmed === ":q") break;
+        if (trimmed === "" || trimmed.startsWith(";")) continue; // skip empty and comments
 
-      // Commands start with :
-      if (trimmed.startsWith(":")) {
-        const { replState: newState, output, shouldExit } = await processReplCommand(trimmed, replState);
-        replState = newState;
-        if (output) console.log(output);
-        if (shouldExit) break;
-        continue;
-      }
+        // Commands start with :
+        if (trimmed.startsWith(":")) {
+          const { replState: newState, output, shouldExit } = await processReplCommand(trimmed, replState);
+          replState = newState;
+          if (output) console.log(output);
+          if (shouldExit) break;
+          continue;
+        }
 
-      // Accumulate multi-line expressions
-      buffer += (buffer ? "\n" : "") + line;
-      for (const ch of line) {
-        if (ch === "(") depth++;
-        if (ch === ")") depth--;
-      }
+        // Accumulate multi-line expressions
+        buffer += (buffer ? "\n" : "") + line;
+        for (const ch of line) {
+          if (ch === "(") depth++;
+          if (ch === ")") depth--;
+        }
 
-      // Balanced parens - evaluate
-      if (depth <= 0) {
-        const { replState: newState, output } = await processReplCommand(buffer, replState);
-        replState = newState;
-        if (output) console.log(output);
-        buffer = "";
-        depth = 0;
+        // Balanced parens - evaluate
+        if (depth <= 0) {
+          const { replState: newState, output } = await processReplCommand(buffer, replState);
+          replState = newState;
+          if (output) console.log(output);
+          buffer = "";
+          depth = 0;
+        }
       }
+    } finally {
+      rl.close();
+      process.stdin.pause();
     }
     return;
   }

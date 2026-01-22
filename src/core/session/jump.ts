@@ -1,5 +1,8 @@
-import { SessionReader, type CheckpointView } from "./reader";
+import { SessionReader } from "./reader";
+import { stepOnce } from "../eval/machineStep";
+import { captureValueResumption } from "../effects/capture";
 import type { State } from "../eval/machine";
+import type { Val } from "../eval/values";
 
 export type JumpResult = {
   state: State;
@@ -8,53 +11,85 @@ export type JumpResult = {
   usedReceipts: string[];
 };
 
+function responseToVal(responseContent: string): Val {
+  return { tag: "Str", s: responseContent };
+}
+
 export class JumpController {
   constructor(private reader: SessionReader) {}
 
   async jumpTo(targetSeq: number): Promise<JumpResult> {
-    const exact = this.reader.getCheckpoints().find(cp => cp.seq === targetSeq);
-    const checkpoint = exact ?? this.reader.findCheckpointBefore(targetSeq);
+    const checkpoint = this.reader.findCheckpointBefore(targetSeq);
 
     if (!checkpoint) {
       throw new Error(`No checkpoint found before seq ${targetSeq}`);
     }
 
-    const checkpointActualSeq = this.getCheckpointActualSeq(checkpoint);
-    const targetActualSeq = targetSeq;
-    const state = this.reader.getCheckpointState(checkpoint.stateId);
+    let state = this.reader.getCheckpointState(checkpoint.stateId);
+    const usedReceipts = new Set<string>();
+    let replayedSteps = 0;
+    let pending: { resumption: { invoke: (v: Val) => State }; receiptKey?: string } | null = null;
 
-    if (checkpoint.seq === targetSeq) {
-      return { state, seq: checkpoint.seq, replayedSteps: 0, usedReceipts: [] };
-    }
-
-    const { usedReceipts, replayedSteps } = this.collectReplayInfo(checkpointActualSeq, targetActualSeq);
-
-    return {
-      state,
-      seq: checkpoint.seq,
-      replayedSteps,
-      usedReceipts,
-    };
-  }
-
-  private collectReplayInfo(checkpointSeq: number, targetSeq: number): { usedReceipts: string[]; replayedSteps: number } {
-    if (targetSeq <= checkpointSeq) {
-      return { usedReceipts: [], replayedSteps: 0 };
-    }
-
-    const used = new Set<string>();
-    const events = this.reader.getEventsInRange(checkpointSeq + 1, targetSeq);
-
+    const events = this.reader.getEventsInRange(checkpoint.seq + 1, targetSeq);
     for (const event of events) {
-      if ((event as any).type === "llm_resp" && "receiptKey" in (event as any)) {
-        used.add((event as any).receiptKey as string);
+      if (!("seq" in event)) continue;
+
+      switch (event.type) {
+        case "step": {
+          const result = stepOnce(state);
+          if (result.tag === "State") {
+            state = result.state;
+          } else if (result.tag === "Done") {
+            state = result.state;
+          } else if (result.tag === "Op") {
+            pending = { resumption: captureValueResumption(result.state) };
+            state = result.state;
+          }
+          replayedSteps += 1;
+          break;
+        }
+        case "llm_req":
+          if (pending) {
+            pending.receiptKey = event.receiptKey;
+          }
+          break;
+        case "llm_resp": {
+          const receipt = this.reader.getReceipt(event.receiptKey);
+          if (!receipt) {
+            throw new Error(`Receipt not found: ${event.receiptKey}`);
+          }
+          usedReceipts.add(event.receiptKey);
+          const content = typeof receipt.response?.content === "string"
+            ? receipt.response.content
+            : JSON.stringify(receipt.response ?? "");
+          const cachedVal = responseToVal(content);
+          if (pending) {
+            state = pending.resumption.invoke(cachedVal);
+            pending = null;
+          } else {
+            const resumption = captureValueResumption(state);
+            state = resumption.invoke(cachedVal);
+          }
+          break;
+        }
+        case "checkpoint":
+          state = this.reader.getCheckpointState(event.stateId);
+          pending = null;
+          break;
+        case "resume":
+        case "effect":
+        case "input":
+        case "result":
+        case "error":
+          break;
       }
     }
 
-    return { usedReceipts: Array.from(used), replayedSteps: events.length };
-  }
-
-  private getCheckpointActualSeq(cp: CheckpointView): number {
-    return cp.rawSeq ?? cp.seq;
+    return {
+      state,
+      seq: targetSeq,
+      replayedSteps,
+      usedReceipts: Array.from(usedReceipts),
+    };
   }
 }

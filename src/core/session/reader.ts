@@ -10,13 +10,16 @@ export type CheckpointView = CheckpointIndex & { rawSeq: number };
 export class SessionReader {
   private events: SessionEvent[] = [];
   private index: SessionIndex;
+  private solverRegistry?: Map<string, Val>;
 
   constructor(
     private eventFile: string,
     private indexFile: string,
-    private nativeRegistry: Map<string, Val>
+    private nativeRegistry: Map<string, Val>,
+    solverRegistry?: Map<string, Val>
   ) {
     this.index = JSON.parse(fs.readFileSync(indexFile, "utf8"));
+    this.solverRegistry = solverRegistry;
   }
 
   async loadAll(): Promise<void> {
@@ -59,7 +62,7 @@ export class SessionReader {
   findCheckpointBefore(targetSeq: number): CheckpointView | undefined {
     let best: CheckpointIndex | undefined;
     for (const cp of this.index.checkpoints) {
-      if (cp.seq < targetSeq && (!best || cp.seq > best.seq)) {
+      if (cp.seq <= targetSeq && (!best || cp.seq > best.seq)) {
         best = cp;
       }
     }
@@ -71,7 +74,7 @@ export class SessionReader {
     if (!serialized) {
       throw new Error(`State not found: ${stateId}`);
     }
-    return deserializeState(serialized, this.nativeRegistry);
+    return deserializeState(serialized, this.nativeRegistry, this.solverRegistry);
   }
 
   getReceipt(key: string): LLMReceipt | undefined {

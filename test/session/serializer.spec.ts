@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { serializeState, deserializeState } from "../../src/core/session/serializer";
 import { buildNativeRegistry } from "../../src/core/session/nativeRegistry";
+import { buildSolverRegistry } from "../../src/core/session/solverRegistry";
 import { COWStore } from "../../src/core/eval/store";
 import { installPrims } from "../../src/core/prims";
 
@@ -90,6 +91,31 @@ describe("State Serializer", () => {
     expect(typeof restored.control.v.fn).toBe("function");  // Restored from registry
   });
 
+  it("round-trips Solver via registry lookup", () => {
+    const store0 = new COWStore();
+    const { env, store: primedStore } = installPrims(store0);
+
+    const solver = {
+      tag: "Solver",
+      name: "test-solver",
+      solve: () => ({ results: [], state: { control: { tag: "Val", v: { tag: "Unit" } } } }),
+      estimate: () => ({ estimate: { tag: "CostEstimate", minCost: 0, maxCost: 0, expectedCost: 0, confidence: 1 }, state: { control: { tag: "Val", v: { tag: "Unit" } } } }),
+    } as any;
+
+    const [storeWithSolver] = primedStore.alloc(solver);
+    const nativeRegistry = buildNativeRegistry(storeWithSolver);
+    const solverRegistry = buildSolverRegistry(storeWithSolver);
+
+    const state = { control: { tag: "Val", v: solver }, env, store: storeWithSolver, kont: [], handlers: [] };
+    const json = JSON.stringify(serializeState(state));
+    const restored = deserializeState(JSON.parse(json), nativeRegistry, solverRegistry);
+
+    expect(restored.control.v.tag).toBe("Solver");
+    expect(restored.control.v.name).toBe("test-solver");
+    expect(typeof restored.control.v.solve).toBe("function");
+    expect(typeof restored.control.v.estimate).toBe("function");
+  });
+
   it("handles circular Ctx.parent without throwing", () => {
     const { env, store, nativeRegistry } = setup();
     const state = { control: { tag: "Val", v: { tag: "Unit" } }, env, store, kont: [], handlers: [] };
@@ -112,11 +138,26 @@ describe("State Serializer", () => {
       { tag: "KSet", name: "y", env },
       { tag: "KAppFun", args: [{ tag: "Num", n: 4 }], env },
       { tag: "KAppArg", fnVal: { tag: "Unit" }, pending: [], acc: [], env },
+      {
+        tag: "KAppArgLazy",
+        fnVal: { tag: "Unit" },
+        pending: [{ expr: { tag: "Num", n: 5 }, idx: 0 }],
+        acc: [{ idx: 0, val: { tag: "Unit" } }],
+        env,
+        totalArgs: 1,
+        currentIdx: 0,
+      },
       { tag: "KCall", savedEnv: env },
       { tag: "KEffect", op: "test.op", pending: [], acc: [], env },
+      { tag: "KHandleBoundary", hid: "h1", savedHandlersDepth: 0, resumeTo: { kont: [{ tag: "KCall", savedEnv: env }], handlersDepth: 0 } },
+      { tag: "KHandleReturn", mode: "exit", hid: "h1", targetKont: [{ tag: "KCall", savedEnv: env }], targetHandlersDepth: 0, savedHandlersDepth: 0 },
+      { tag: "KPrompt", promptTag: { tag: "Sym", name: "prompt" }, handler: { tag: "Unit" }, env, savedKont: [], savedHandlersDepth: 0 },
       { tag: "KMatch", clauses: [], env },
       { tag: "KOracleLambda", params: ["a"], env },
       { tag: "KBind", fn: { tag: "Unit" }, env },
+      { tag: "KHandlerBind", handlers: [{ type: Symbol.for("err"), handler: { tag: "Unit" } }] },
+      { tag: "KRestartBind", restarts: [{ name: Symbol.for("restart"), fn: { tag: "Unit" }, description: "restart" }], savedKont: [], env, store, handlers: [] },
+      { tag: "KSignaling", condition: { tag: "Condition", type: Symbol.for("cond"), message: "msg", data: { tag: "Unit" }, restarts: [] }, required: false },
     ];
 
     const state = { control: { tag: "Val", v: { tag: "Unit" } }, env, store, kont: frames, handlers: [] };
@@ -126,8 +167,14 @@ describe("State Serializer", () => {
 
     expect(restored.kont.length).toBe(frames.length);
     expect(restored.kont[0].tag).toBe("KIf");
-    expect(restored.kont[6].tag).toBe("KCall");
-    expect(restored.kont[6].savedEnv.tag).toBe("Ctx");
+    expect(restored.kont[6].tag).toBe("KAppArgLazy");
+    expect(restored.kont[7].tag).toBe("KCall");
+    expect(restored.kont[7].savedEnv.tag).toBe("Ctx");
+    expect(restored.kont[9].tag).toBe("KHandleBoundary");
+    expect(restored.kont[10].tag).toBe("KHandleReturn");
+    expect(restored.kont[15].tag).toBe("KHandlerBind");
+    expect(restored.kont[16].tag).toBe("KRestartBind");
+    expect(restored.kont[17].tag).toBe("KSignaling");
   });
 
   it("round-trips Cont with Resumption (invoke reconstructed)", () => {

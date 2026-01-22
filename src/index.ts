@@ -172,3 +172,15 @@ export { createOpenAIAdapter } from "./core/oracle/adapters";
 
 // Primitive installation (for initializing REPL environment)
 export { installPrims } from "./core/prims";
+
+// Session management
+export {
+  SessionWriter,
+  SessionReader,
+  JumpController,
+  serializeState,
+  deserializeState,
+  renderEvent,
+  renderTrace,
+} from "./core/session";
+export type { SessionEvent, SessionIndex, LLMReceipt } from "./core/session";

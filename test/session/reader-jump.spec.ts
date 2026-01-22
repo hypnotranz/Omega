@@ -79,7 +79,7 @@ describe("SessionReader", () => {
     expect(checkpoints[1].reason).toBe("llm_boundary");
   });
 
-  it("finds nearest checkpoint before target seq", async () => {
+  it("finds nearest checkpoint at or before target seq", async () => {
     const writer = new SessionWriter(TEST_DIR, "nearest-test");
 
     // seq 0: first input
@@ -103,17 +103,17 @@ describe("SessionReader", () => {
     );
     await reader.loadAll();
 
-    // Target seq 4 should find checkpoint at seq 1
+    // Target seq 4 should find checkpoint at seq 4
     const cp1 = reader.findCheckpointBefore(4);
-    expect(cp1?.seq).toBe(1);
+    expect(cp1?.seq).toBe(4);
 
     // Target seq 6 should find checkpoint at seq 4
     const cp2 = reader.findCheckpointBefore(6);
     expect(cp2?.seq).toBe(4);
 
-    // Target seq 1 should find no checkpoint
+    // Target seq 1 should find checkpoint at seq 1
     const cp3 = reader.findCheckpointBefore(1);
-    expect(cp3).toBeUndefined();
+    expect(cp3?.seq).toBe(1);
   });
 
   it("deserializes checkpoint state correctly", async () => {
@@ -234,7 +234,7 @@ describe("JumpController", () => {
     await expect(controller.jumpTo(0)).rejects.toThrow(/No checkpoint/);
   });
 
-  it("returns usedReceipts when replaying past LLM calls", async () => {
+  it("replays cached LLM responses when jumping past llm_resp", async () => {
     const writer = new SessionWriter(TEST_DIR, "receipt-replay");
 
     // Create checkpoint before LLM
@@ -273,14 +273,45 @@ describe("JumpController", () => {
     const checkpoints = reader.getCheckpoints();
     const controller = new JumpController(reader);
 
-    // Jump to second checkpoint (after LLM)
-    const result = await controller.jumpTo(checkpoints[1].seq);
+    // Jump to llm_resp event (between checkpoints)
+    const llmRespSeq = checkpoints[0].seq + 2;
+    const result = await controller.jumpTo(llmRespSeq);
 
-    // Should report the receipt was used (even if state was loaded directly)
-    // The usedReceipts tracks what would be needed for replay
+    expect(result.usedReceipts).toContain(receiptKey);
+    expect(result.seq).toBe(llmRespSeq);
     expect(result.state.control.v.s).toBe("response");
   });
 
+  it("replays step events to reach target seq", async () => {
+    const writer = new SessionWriter(TEST_DIR, "step-replay");
+
+    const initState = {
+      control: { tag: "Expr", e: { tag: "Lit", value: 1 } },
+      env: baseEnv,
+      store: baseStore,
+      kont: [],
+      handlers: [],
+    };
+    writer.checkpoint(initState, "manual"); // seq 0
+    writer.step("lit"); // seq 1
+    writer.close();
+
+    const reader = new SessionReader(
+      path.join(TEST_DIR, "sessions", "step-replay.jsonl"),
+      path.join(TEST_DIR, "sessions", "step-replay.index.json"),
+      nativeRegistry
+    );
+    await reader.loadAll();
+
+    const controller = new JumpController(reader);
+    const result = await controller.jumpTo(1);
+
+    expect(result.seq).toBe(1);
+    expect(result.replayedSteps).toBe(1);
+    expect(result.state.control.tag).toBe("Val");
+    expect(result.state.control.v.tag).toBe("Num");
+    expect(result.state.control.v.n).toBe(1);
+  });
   it("state at checkpoint has correct environment bindings", async () => {
     // This test verifies that after jumping, the environment is usable
     // We can't easily call functions without full REPL, but we can check env exists

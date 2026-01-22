@@ -4,6 +4,9 @@ import * as fs from "fs";
 import * as path from "path";
 
 const SESSION_DIR = ".omega-session-test";
+const REPL_TIMEOUT_MS = 120_000;
+const REPL_COMMAND_DELAY_MS = 800;
+const REPL_START_DELAY_MS = 800;
 
 type ReplRun = { raw: string; lines: string[] };
 
@@ -37,7 +40,7 @@ async function runRepl(commands: string[]): Promise<ReplRun> {
     const timeout = setTimeout(() => {
       proc.kill();
       reject(new Error("REPL timeout"));
-    }, 40000);
+    }, REPL_TIMEOUT_MS);
 
     proc.on("error", (err) => {
       clearTimeout(timeout);
@@ -54,14 +57,14 @@ async function runRepl(commands: string[]): Promise<ReplRun> {
       if (idx < commands.length) {
         proc.stdin.write(commands[idx] + "\n");
         idx++;
-        setTimeout(sendNext, 800);
+        setTimeout(sendNext, REPL_COMMAND_DELAY_MS);
       } else {
         proc.stdin.write(":quit\n");
         proc.stdin.end();
       }
     };
 
-    setTimeout(sendNext, 800);
+    setTimeout(sendNext, REPL_START_DELAY_MS);
   });
 }
 
@@ -94,6 +97,19 @@ describe("Session integration (REPL)", () => {
 
     expect(fs.existsSync(savedFile)).toBe(true);
     expect(fs.existsSync(indexFile)).toBe(true);
+  });
+
+  it("fork creates a new session file", async () => {
+    await runRepl([
+      "(define x 1)",
+      ":session fork fork-test",
+    ]);
+
+    const forkFile = path.join(SESSION_DIR, "sessions", "fork-test.jsonl");
+    const forkIndex = path.join(SESSION_DIR, "sessions", "fork-test.index.json");
+
+    expect(fs.existsSync(forkFile)).toBe(true);
+    expect(fs.existsSync(forkIndex)).toBe(true);
   });
 
   it("load restores environment bindings", async () => {

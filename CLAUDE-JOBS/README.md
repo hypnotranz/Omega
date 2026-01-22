@@ -73,10 +73,10 @@ These jobs implement the architecture specified in `ARCHITECTURE-LANGUAGES-*.md`
 
 | Job ID | Title | Priority | Status | Depends On |
 |--------|-------|----------|--------|------------|
-| [018a](./018a-STATE-SERIALIZATION.md) | State Serialization (Foundation) | P1 - Core Infrastructure | NOT STARTED | - |
+| [018a](./018a-STATE-SERIALIZATION.md) | State Serialization (Foundation) | P1 - Core Infrastructure | DONE | - |
 | [018b](./018b-SESSION-WRITER.md) | Session Writer and File Format | P1 - Core Infrastructure | DONE | 018a |
-| [018c](./018c-SESSION-READER-JUMP.md) | Session Reader and Jump Controller | P1 - Core Infrastructure | NOT STARTED | 018a, 018b |
-| [018d](./018d-PRETTY-RENDERER.md) | Pretty Renderer | P2 - Nice to Have | NOT STARTED | 018b |
+| [018c](./018c-SESSION-READER-JUMP.md) | Session Reader and Jump Controller | P1 - Core Infrastructure | DONE | 018a, 018b |
+| [018d](./018d-PRETTY-RENDERER.md) | Pretty Renderer | P2 - Nice to Have | DONE | 018b |
 
 ---
 

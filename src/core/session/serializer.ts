@@ -1,5 +1,5 @@
 import type { Expr } from "../ast";
-import type { ConditionVal, RestartPoint } from "../conditions/types";
+import type { ConditionVal, RestartBinding, RestartPoint } from "../conditions/types";
 import type { Ctx } from "../ctx/ctx";
 import type { Control, Frame, HandlerFrame, State } from "../eval/machine";
 import type { Store } from "../eval/store";
@@ -26,13 +26,19 @@ export type SerializedHandlerFrame = {
   fin?: { body: Expr };
 };
 
-export type SerializedRestart = {
+export type SerializedRestartPoint = {
   name: string;
   description?: string;
   kont: SerializedFrame[];
   envId: string;
   storeEntries: [number, SerializedVal][];
   handlers: SerializedHandlerFrame[];
+};
+
+export type SerializedRestartBinding = {
+  name: string;
+  description?: string;
+  fn: SerializedVal;
 };
 
 export type SerializedFrame =
@@ -52,7 +58,7 @@ export type SerializedFrame =
   | { tag: "KOracleLambda"; params: string[]; envId: string }
   | { tag: "KBind"; fn: SerializedVal; envId: string }
   | { tag: "KHandlerBind"; handlers: Array<{ type: string | "*"; handler: SerializedVal }> }
-  | { tag: "KRestartBind"; restarts: SerializedRestart[]; savedKont: SerializedFrame[]; envId: string; storeEntries: [number, SerializedVal][]; handlers: SerializedHandlerFrame[] }
+  | { tag: "KRestartBind"; restarts: SerializedRestartBinding[]; savedKont: SerializedFrame[]; envId: string; storeEntries: [number, SerializedVal][]; handlers: SerializedHandlerFrame[] }
   | { tag: "KSignaling"; condition: SerializedVal; required: boolean }
   | { tag: string; [key: string]: unknown };
 
@@ -119,7 +125,7 @@ export type SerializedVal =
   | { tag: "CostEstimate"; minCost: number; maxCost: number; expectedCost: number; confidence: number }
   | { tag: "Solver"; name: string }
   | { tag: "FactStore"; factsEntries: Array<[string, SerializedVal]> }
-  | { tag: "Condition"; kind: string; message?: string; payload?: SerializedVal; restarts?: SerializedRestart[] }
+  | { tag: "Condition"; kind: string; message?: string; payload?: SerializedVal; restarts?: SerializedRestartPoint[] }
   | { tag: string; [key: string]: unknown };
 
 function serializeProfile(profile: any): any {
@@ -186,7 +192,7 @@ export function serializeState(state: State): SerializedState {
     return entries;
   }
 
-  function serializeRestart(r: RestartPoint): SerializedRestart {
+  function serializeRestartPoint(r: RestartPoint): SerializedRestartPoint {
     return {
       name: (r.name as any)?.toString?.() ?? "restart",
       description: r.description,
@@ -197,13 +203,21 @@ export function serializeState(state: State): SerializedState {
     };
   }
 
+  function serializeRestartBinding(r: RestartBinding): SerializedRestartBinding {
+    return {
+      name: (r.name as any)?.toString?.() ?? "restart",
+      description: r.description,
+      fn: serializeVal(r.fn),
+    };
+  }
+
   function serializeCondition(v: ConditionVal): SerializedVal {
     return {
       tag: "Condition",
       kind: (v.type as any)?.toString?.() ?? "condition",
       message: v.message,
       payload: serializeVal(v.data),
-      restarts: (v.restarts ?? []).map(serializeRestart),
+      restarts: (v.restarts ?? []).map(serializeRestartPoint),
     };
   }
 
@@ -481,7 +495,7 @@ export function serializeState(state: State): SerializedState {
       case "KRestartBind":
         return {
           tag: "KRestartBind",
-          restarts: ((f as any).restarts ?? []).map(serializeRestart),
+          restarts: ((f as any).restarts ?? []).map(serializeRestartBinding),
           savedKont: (f as any).savedKont.map(serializeFrame),
           envId: collectCtx((f as any).env),
           storeEntries: serializeStore((f as any).store),
@@ -526,7 +540,11 @@ export function serializeState(state: State): SerializedState {
   };
 }
 
-export function deserializeState(s: SerializedState, nativeRegistry: Map<string, Val>): State {
+export function deserializeState(
+  s: SerializedState,
+  nativeRegistry: Map<string, Val>,
+  solverRegistry?: Map<string, Val>
+): State {
   const ctxInstances: Record<string, Ctx> = {};
 
   function rebuildCtx(id: string | null | undefined): Ctx | undefined {
@@ -563,7 +581,7 @@ export function deserializeState(s: SerializedState, nativeRegistry: Map<string,
     return new COWStore(next < 0 ? 0 : next, cells);
   }
 
-  function deserializeRestart(r: SerializedRestart): RestartPoint {
+  function deserializeRestartPoint(r: SerializedRestartPoint): RestartPoint {
     return {
       name: Symbol.for(r.name ?? "restart"),
       description: r.description,
@@ -574,13 +592,21 @@ export function deserializeState(s: SerializedState, nativeRegistry: Map<string,
     } as any;
   }
 
+  function deserializeRestartBinding(r: SerializedRestartBinding): RestartBinding {
+    return {
+      name: Symbol.for(r.name ?? "restart"),
+      description: r.description,
+      fn: deserializeVal(r.fn),
+    } as any;
+  }
+
   function deserializeCondition(v: any): ConditionVal {
     return {
       tag: "Condition",
       type: Symbol.for(v.kind ?? "condition"),
       message: v.message ?? "",
       data: v.payload ? deserializeVal(v.payload) : ({ tag: "Unit" } as Val),
-      restarts: (v.restarts ?? []).map(deserializeRestart),
+      restarts: (v.restarts ?? []).map(deserializeRestartPoint),
     } as any;
   }
 
@@ -594,6 +620,21 @@ export function deserializeState(s: SerializedState, nativeRegistry: Map<string,
       lazyArgs,
       fn: () => {
         throw new Error(`Native function not found: ${name}`);
+      },
+    } as any;
+  }
+
+  function restoreSolver(name: string): Val {
+    const solver = solverRegistry?.get(name);
+    if (solver) return solver;
+    return {
+      tag: "Solver",
+      name,
+      solve: () => {
+        throw new Error(`Solver not found: ${name}`);
+      },
+      estimate: () => {
+        throw new Error(`Solver not found: ${name}`);
       },
     } as any;
   }
@@ -653,7 +694,7 @@ export function deserializeState(s: SerializedState, nativeRegistry: Map<string,
       case "Machine":
         return {
           tag: "Machine",
-          state: deserializeState((v as any).state, nativeRegistry),
+          state: deserializeState((v as any).state, nativeRegistry, solverRegistry),
           label: (v as any).label,
           stepCount: (v as any).stepCount ?? 0,
           breakOnOps: (v as any).breakOnOps ? new Set((v as any).breakOnOps) : undefined,
@@ -768,7 +809,7 @@ export function deserializeState(s: SerializedState, nativeRegistry: Map<string,
       case "Condition":
         return deserializeCondition(v);
       case "Cont": {
-        const base = deserializeState((v as any).resumption.baseState, nativeRegistry);
+        const base = deserializeState((v as any).resumption.baseState, nativeRegistry, solverRegistry);
         return {
           tag: "Cont",
           hid: (v as any).hid,
@@ -787,7 +828,7 @@ export function deserializeState(s: SerializedState, nativeRegistry: Map<string,
         } as any;
       }
       case "Solver":
-        return restoreNative((v as any).name, "variadic");
+        return restoreSolver((v as any).name);
       default:
         return v as any;
     }
@@ -877,7 +918,7 @@ export function deserializeState(s: SerializedState, nativeRegistry: Map<string,
       case "KRestartBind":
         return {
           tag: "KRestartBind",
-          restarts: ((f as any).restarts ?? []).map(deserializeRestart),
+          restarts: ((f as any).restarts ?? []).map(deserializeRestartBinding),
           savedKont: (f as any).savedKont.map(deserializeFrame),
           env: rebuildCtx((f as any).envId) as any,
           store: deserializeStore((f as any).storeEntries ?? []),
