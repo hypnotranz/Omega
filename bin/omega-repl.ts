@@ -2702,11 +2702,102 @@ function getConsoleOutput(fn: () => void): string[] {
   return output;
 }
 
+type ReplArgs = ReturnType<typeof parseArgs>;
+
+type BatchMetadata = {
+  command?: string;
+  file?: string;
+};
+
+async function runBatch(
+  args: Pick<ReplArgs, "cmd" | "file">,
+  replState: ReplState
+): Promise<{ replState: ReplState; output: string; metadata: BatchMetadata }> {
+  if (args.cmd) {
+    const { replState: newState, output } = await processReplCommand(args.cmd.trim(), replState);
+    return { replState: newState, output, metadata: { command: args.cmd } };
+  }
+
+  if (args.file) {
+    const filePath = path.resolve(args.file);
+    if (!fs.existsSync(filePath)) {
+      console.error(`File not found: ${filePath}`);
+      process.exit(1);
+    }
+
+    // Read file and extract complete S-expressions (handles multi-line)
+    const fileContent = fs.readFileSync(filePath, "utf8");
+
+    // Strip comment lines before parsing
+    const cleanedContent = fileContent
+      .split("\n")
+      .filter(line => !line.trim().startsWith(";"))
+      .join("\n");
+
+    // Extract balanced S-expressions
+    const sexprs = extractSexpressions(cleanedContent);
+    const outputs: string[] = [];
+
+    for (const sexpr of sexprs) {
+      const trimmed = sexpr.trim();
+      if (!trimmed) continue;
+
+      const { replState: newState, output, shouldExit } = await processReplCommand(trimmed, replState);
+      replState = newState;
+      if (output) outputs.push(output);
+      if (shouldExit) break;
+    }
+
+    return { replState, output: outputs.join("\n"), metadata: { file: args.file } };
+  }
+
+  return { replState, output: "", metadata: {} };
+}
+
+function emitBatchOutput(
+  args: Pick<ReplArgs, "session" | "json">,
+  replState: ReplState,
+  output: string,
+  metadata: BatchMetadata
+): void {
+  if (args.json) {
+    const result = {
+      session: args.session,
+      command: metadata.command,
+      file: metadata.file,
+      debugMode: replState.debugMode,
+      stepCount: replState.stepCount,
+      defsCount: replState.defs.length,
+      output,
+    };
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (output) {
+    console.log(output);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Main REPL loop
 // ─────────────────────────────────────────────────────────────────
 async function main() {
   const args = parseArgs();
+
+  if (args.cmd || args.file) {
+    const replState = args.session
+      ? await loadSession(args.session) || await initReplState()
+      : await initReplState();
+    const { replState: newState, output, metadata } = await runBatch(args, replState);
+
+    if (args.session) {
+      saveSession(newState, args.session);
+    }
+
+    emitBatchOutput(args, newState, output, metadata);
+    return;
+  }
 
   // ─────────────────────────────────────────────────────────────────
   // Session mode: run command(s) against a named session
@@ -2714,82 +2805,6 @@ async function main() {
   if (args.session) {
     // Load existing session or create new one
     let replState = await loadSession(args.session) || await initReplState();
-
-    // If we have a command, run it
-    if (args.cmd) {
-      const { replState: newState, output, shouldExit } = await processReplCommand(args.cmd.trim(), replState);
-      replState = newState;
-
-      // Save session
-      saveSession(replState, args.session);
-
-      // Output result
-      if (args.json) {
-        const result = {
-          session: args.session,
-          command: args.cmd,
-          debugMode: replState.debugMode,
-          stepCount: replState.stepCount,
-          defsCount: replState.defs.length,
-          output,
-        };
-        console.log(JSON.stringify(result, null, 2));
-      } else {
-        if (output) console.log(output);
-      }
-      return;
-    }
-
-    // If we have a file, run all commands from it
-    if (args.file) {
-      const filePath = path.resolve(args.file);
-      if (!fs.existsSync(filePath)) {
-        console.error(`File not found: ${filePath}`);
-        process.exit(1);
-      }
-
-      // Read file and extract complete S-expressions (handles multi-line)
-      const fileContent = fs.readFileSync(filePath, "utf8");
-
-      // Strip comment lines before parsing
-      const cleanedContent = fileContent
-        .split("\n")
-        .filter(line => !line.trim().startsWith(";"))
-        .join("\n");
-
-      // Extract balanced S-expressions
-      const sexprs = extractSexpressions(cleanedContent);
-      const outputs: string[] = [];
-
-      for (const sexpr of sexprs) {
-        const trimmed = sexpr.trim();
-        if (!trimmed) continue;
-
-        const { replState: newState, output, shouldExit } = await processReplCommand(trimmed, replState);
-        replState = newState;
-        if (output) outputs.push(output);
-        if (shouldExit) break;
-      }
-
-      // Save session
-      saveSession(replState, args.session);
-
-      // Output results
-      if (args.json) {
-        const result = {
-          session: args.session,
-          file: args.file,
-          debugMode: replState.debugMode,
-          stepCount: replState.stepCount,
-          defsCount: replState.defs.length,
-          output: outputs.join("\n"),
-        };
-        console.log(JSON.stringify(result, null, 2));
-      } else {
-        console.log(outputs.join("\n"));
-      }
-      return;
-    }
 
     // No command or file, just show session info
     console.log(`Session '${args.session}' loaded.`);

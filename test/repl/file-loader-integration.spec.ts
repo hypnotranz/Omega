@@ -4,6 +4,28 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { execSync } from "node:child_process";
 
+const REPL_TIMEOUT_MS = 30000;
+const REPL_COMMAND = "npx tsx bin/omega-repl.ts";
+
+function runReplCommand(args: string): string {
+  return execSync(`${REPL_COMMAND} ${args}`, {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    timeout: REPL_TIMEOUT_MS,
+    stdio: "pipe"
+  });
+}
+
+function throwIfTimedOut(error: unknown): void {
+  const message = error instanceof Error ? error.message : "";
+  const code = typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : "";
+  if (code === "ETIMEDOUT" || message.includes("ETIMEDOUT")) {
+    throw new Error(`REPL execution timed out: ${message || "ETIMEDOUT"}`);
+  }
+}
+
 describe("REPL file loader integration tests", () => {
   let tempDir: string;
 
@@ -32,15 +54,7 @@ describe("REPL file loader integration tests", () => {
     // Run the REPL with the file
     // Note: This will only work if npx tsx is available
     try {
-      const result = execSync(
-        `npx tsx bin/omega-repl.ts --file "${testFile}"`,
-        {
-          cwd: process.cwd(),
-          encoding: "utf8",
-          timeout: 10000,
-          stdio: "pipe"
-        }
-      );
+      const result = runReplCommand(`--file "${testFile}"`);
 
       // The file should execute without syntax errors
       // We don't check the exact output, just that it didn't fail with parse errors
@@ -48,6 +62,7 @@ describe("REPL file loader integration tests", () => {
       expect(result).not.toContain("parse error");
       expect(result).not.toContain("Error:");
     } catch (error: any) {
+      throwIfTimedOut(error);
       // If the execution fails, check the error message
       const stderr = error.stderr?.toString() || "";
       const stdout = error.stdout?.toString() || "";
@@ -73,19 +88,12 @@ describe("REPL file loader integration tests", () => {
     fs.writeFileSync(testFile, content, "utf8");
 
     try {
-      const result = execSync(
-        `npx tsx bin/omega-repl.ts --file "${testFile}"`,
-        {
-          cwd: process.cwd(),
-          encoding: "utf8",
-          timeout: 10000,
-          stdio: "pipe"
-        }
-      );
+      const result = runReplCommand(`--file "${testFile}"`);
 
       expect(result).not.toContain("unexpected token");
       expect(result).not.toContain("parse error");
     } catch (error: any) {
+      throwIfTimedOut(error);
       const stderr = error.stderr?.toString() || "";
       const stdout = error.stdout?.toString() || "";
       const output = stderr + stdout;
@@ -106,19 +114,12 @@ describe("REPL file loader integration tests", () => {
     fs.writeFileSync(testFile, content, "utf8");
 
     try {
-      const result = execSync(
-        `npx tsx bin/omega-repl.ts --file "${testFile}"`,
-        {
-          cwd: process.cwd(),
-          encoding: "utf8",
-          timeout: 10000,
-          stdio: "pipe"
-        }
-      );
+      const result = runReplCommand(`--file "${testFile}"`);
 
       expect(result).not.toContain("unexpected token");
       expect(result).not.toContain("parse error");
     } catch (error: any) {
+      throwIfTimedOut(error);
       const stderr = error.stderr?.toString() || "";
       const stdout = error.stdout?.toString() || "";
       const output = stderr + stdout;
@@ -139,21 +140,14 @@ describe("REPL file loader integration tests", () => {
     fs.writeFileSync(testFile, content, "utf8");
 
     try {
-      const result = execSync(
-        `npx tsx bin/omega-repl.ts --file "${testFile}"`,
-        {
-          cwd: process.cwd(),
-          encoding: "utf8",
-          timeout: 10000,
-          stdio: "pipe"
-        }
-      );
+      const result = runReplCommand(`--file "${testFile}"`);
 
       // This should NOT have 4 parse errors (one per line)
       // It should be parsed as a single expression
       expect(result).not.toContain("unexpected token");
       expect(result).not.toContain("unexpected )");
     } catch (error: any) {
+      throwIfTimedOut(error);
       const stderr = error.stderr?.toString() || "";
       const stdout = error.stdout?.toString() || "";
       const output = stderr + stdout;
