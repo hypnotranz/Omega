@@ -88,8 +88,12 @@ async function executeMode(config: { code?: string; file?: string; verbose?: boo
 
   try {
     // Get code to execute
+    // If both --file and --eval provided, load file first then eval code
     let code: string;
-    if (config.file) {
+    if (config.file && config.code) {
+      const fileContent = fs.readFileSync(config.file, "utf8");
+      code = `(begin ${fileContent} ${config.code})`;
+    } else if (config.file) {
       code = fs.readFileSync(config.file, "utf8");
     } else if (config.code) {
       code = config.code;
@@ -98,10 +102,15 @@ async function executeMode(config: { code?: string; file?: string; verbose?: boo
       process.exit(1);
     }
 
-    // Setup runtime
+    // Setup runtime with full capabilities (shell, file.read, file.write enabled)
     const store0 = new COWStore();
     const prim = installPrims(store0);
-    const rt = new RuntimeImpl(undefined as any, new SnapshotRepo(), new InMemoryReceiptStore(), undefined as any);
+    const profile = {
+      name: "cli-default",
+      caps: ["*"] as any,  // Full capabilities - shell, file.read, file.write, infer, etc.
+      budgets: { maxSteps: 1_000_000, maxInferCalls: 1000 },
+    };
+    const rt = new RuntimeImpl(undefined as any, new SnapshotRepo(), new InMemoryReceiptStore(), undefined as any, profile);
 
     // Compile
     const expr = compileTextToExpr(code);

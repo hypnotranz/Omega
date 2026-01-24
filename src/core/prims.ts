@@ -633,6 +633,22 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: { tag: "Str", s: str.s.substring(start.n, end.n) } } };
   }});
 
+  // string->number: convert string to number (canonical Lisp primitive)
+  def("string->number", { tag: "Native", name: "string->number", arity: 1, fn: (args, s) => {
+    const str = args[0] as any;
+    if (str.tag !== "Str") throw new Error("string->number: expected string");
+    const n = parseFloat(str.s);
+    if (isNaN(n)) return { ...s, control: { tag: "Val", v: { tag: "Bool", b: false } } };
+    return { ...s, control: { tag: "Val", v: { tag: "Num", n } } };
+  }});
+
+  // number->string: convert number to string (canonical Lisp primitive)
+  def("number->string", { tag: "Native", name: "number->string", arity: 1, fn: (args, s) => {
+    const num = args[0] as any;
+    if (num.tag !== "Num") throw new Error("number->string: expected number");
+    return { ...s, control: { tag: "Val", v: { tag: "Str", s: String(num.n) } } };
+  }});
+
   // ─────────────────────────────────────────────────────────────────
   // Symbol and type predicates
   // ─────────────────────────────────────────────────────────────────
