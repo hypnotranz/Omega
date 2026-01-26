@@ -1,3 +1,46 @@
+# ⚠️ SUPERSEDED BY 32-10 HYGIENIC SYNTAX-RULES
+
+> **THIS SPEC DESCRIBES UNHYGIENIC MACROS - 32-10 ADDS HYGIENIC SYSTEM**
+>
+> ## What Changed
+>
+> This spec describes basic `defmacro`-style macros that can accidentally
+> capture variables (unhygienic). The 32-series adds a proper **hygienic
+> macro system** via `syntax-rules`:
+>
+> ```lisp
+> ;; THIS SPEC (unhygienic defmacro):
+> (defmacro my-or (a b)
+>   `(let ((tmp ,a))      ; 'tmp' could clash with user's 'tmp'!
+>      (if tmp tmp ,b)))
+>
+> ;; 32-10 (hygienic syntax-rules):
+> (define-syntax my-or
+>   (syntax-rules ()
+>     ((my-or a b)
+>      (let ((tmp a))      ; 'tmp' is automatically renamed - NO CLASH
+>        (if tmp tmp b)))))
+> ```
+>
+> ## What 32-10 Adds
+>
+> - **syntax-rules**: Pattern-based hygienic macros (R5RS compatible)
+> - **syntax-case**: Procedural hygienic macros (R6RS compatible)
+> - **Phase separation**: Clear compile-time vs runtime distinction
+> - **Module integration**: Macros respect module boundaries
+>
+> ## What's Still Valid
+>
+> The *concepts* of compile-time transformation are still valid.
+> `defmacro` can still exist for backwards compatibility, but `syntax-rules`
+> should be preferred for new code.
+>
+> ## References
+> - [32-10 amb + syntax-rules](32-10-AMB-SYNTAX.md)
+> - [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 11: Macros (Compile-Time Transformations)
 
 ## What Are Macros?

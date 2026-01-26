@@ -1,0 +1,347 @@
+# ΩPR Coprocessor Under CEKS Scheduling - Feature Definitions
+# Job 020: CEKS-governed, iteratively programmable semantic coprocessor
+#
+# This file defines the dependency graph for parallel execution
+# of the ΩPR Coprocessor integration with OmegaLLM's CEKS machine.
+#
+# DESIGN PRINCIPLES:
+# 1. CEKS owns control - all iteration as explicit frames, not TS loops
+# 2. Coprocessor calls are typed and receipted - every attempt recorded
+# 3. Capabilities are hard gates - violations are fatal
+# 4. "Best case results" posture - assume correct, but validate everything
+# 5. Progressive retries - inject typechecker feedback for improvement
+#
+# ARCHITECTURAL REFERENCE:
+# See LambdaLLM/ARCHITECTURE/COPROCESSOR.md for full design document
+
+features:
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 0: Foundation Types (no dependencies)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: "020-types"
+    title: "ΩPR Coprocessor Types and Interfaces"
+    description: |
+      Define all TypeScript interfaces and types for the ΩPR Coprocessor:
+      - OprSession, LogicWorkState, AnalyzeWorkState
+      - SpineProfile (AOP aspects configuration)
+      - ValidationError, AttemptContext, AttemptLog
+      - OprStepRequestEnvelope, OprStepResponseEnvelope
+      - Callback types for reentrancy
+    job_file: "020-types.md"
+    depends_on: []
+    estimated_hours: 3
+    tags: ["foundation", "types", "interfaces"]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 1: Core Data Structures (depend only on types)
+  # All can run in PARALLEL
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: "020a1-spine-profile"
+    title: "SpineProfile Configuration"
+    description: |
+      AOP-style aspects configuration for coprocessor governance:
+      - Capability specifications (allowed ops, effects, callbacks)
+      - Required options enforcement
+      - Budget dimensions for ΩPR
+      - Strictness policy matrix
+      - Redaction configuration
+    job_file: "020a1-spine-profile.md"
+    depends_on: ["020-types"]
+    estimated_hours: 2
+    tags: ["core", "config", "aop"]
+
+  - id: "020a2-work-state"
+    title: "Work State Mementos"
+    description: |
+      Iteration state types for solver sessions:
+      - LogicWorkState (semi-naive Datalog iteration)
+      - AnalyzeWorkState (worklist dataflow analysis)
+      - PipelineWorkState (multi-stage analysis)
+      - Artifact reference management
+      - State serialization/deserialization
+    job_file: "020a2-work-state.md"
+    depends_on: ["020-types"]
+    estimated_hours: 2.5
+    tags: ["core", "solver", "state"]
+
+  - id: "020a3-opr-session"
+    title: "OprSession Management"
+    description: |
+      Session wrapper for coprocessor work:
+      - Session lifecycle (create, step, terminate)
+      - Receipt chain tracking
+      - Attempt log management
+      - Kernel version pinning
+      - Session serialization for persistence
+    job_file: "020a3-opr-session.md"
+    depends_on: ["020-types"]
+    estimated_hours: 2
+    tags: ["core", "session"]
+
+  - id: "020a4-attempt-log"
+    title: "Attempt Log and Receipt Keys"
+    description: |
+      Tracking for retry infrastructure:
+      - AttemptRecord structure
+      - Semantic key vs Attempt key separation
+      - Receipt chain building
+      - Attempt digest computation
+      - Failed attempt storage
+    job_file: "020a4-attempt-log.md"
+    depends_on: ["020-types"]
+    estimated_hours: 1.5
+    tags: ["core", "receipts", "retry"]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 2: Validation Infrastructure (depend on Layer 1)
+  # 020b1, 020b2, 020b3 can run in PARALLEL
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: "020b1-validator-matrix"
+    title: "Validator Matrix (Typechecker)"
+    description: |
+      Schema and conformance validation with compiler-like feedback:
+      - JSON parse validation
+      - Schema shape validation (required fields, types)
+      - Capability compliance checking
+      - Error code taxonomy (E_JSON_PARSE, E_SCHEMA_*, E_CAP_*, etc.)
+      - Path-level error details
+      - Fix hints generation
+    job_file: "020b1-validator-matrix.md"
+    depends_on: ["020a1-spine-profile", "020-types"]
+    estimated_hours: 3
+    tags: ["validation", "typechecker"]
+
+  - id: "020b2-retry-controller"
+    title: "Retry Controller"
+    description: |
+      Counterexample-guided conformance repair:
+      - PREVIOUS_ATTEMPTS context injection
+      - Retry policy configuration
+      - Retryability classification
+      - Deterministic safe repairs
+      - Retry budget enforcement
+    job_file: "020b2-retry-controller.md"
+    depends_on: ["020a4-attempt-log", "020b1-validator-matrix"]
+    estimated_hours: 2.5
+    tags: ["retry", "repair"]
+
+  - id: "020b3-progress-invariants"
+    title: "Progress Invariants Checker"
+    description: |
+      Work-state monotonicity and progress validation:
+      - Logic: iteration monotone, stratum valid, new_facts bounded
+      - Analyze: worklist shrinks or widening, iteration monotone
+      - Cycle detection
+      - Stagnation detection
+      - Progress violation error generation
+    job_file: "020b3-progress-invariants.md"
+    depends_on: ["020a2-work-state", "020-types"]
+    estimated_hours: 2
+    tags: ["validation", "progress"]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 3: CEKS Integration (depend on Layer 2)
+  # 020c1, 020c2, 020c3 can run in PARALLEL
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: "020c1-solver-frames"
+    title: "CEKS Solver Frames"
+    description: |
+      Convert fixpoint iteration from TS loops to CEKS frames:
+      - LogicSolveK frame (logic solver iteration)
+      - AnalyzeSolveK frame (dataflow solver iteration)
+      - OprCallbackK frame (callback roundtrip)
+      - Frame lifecycle in machineStep.ts
+      - State.analysis field integration
+    job_file: "020c1-solver-frames.md"
+    depends_on: ["020a3-opr-session", "020-types"]
+    estimated_hours: 3.5
+    tags: ["ceks", "frames", "iteration"]
+
+  - id: "020c2-kernel-ops"
+    title: "KERNEL_OPS Extension"
+    description: |
+      Register ΩPR operations in governance:
+      - Add opr.logic.step to KERNEL_OPS
+      - Add opr.analyze.step to KERNEL_OPS
+      - Add opr.pipeline.step to KERNEL_OPS
+      - Profile allowedOps integration
+      - Capability mappings
+    job_file: "020c2-kernel-ops.md"
+    depends_on: ["020-types"]
+    estimated_hours: 1
+    tags: ["ceks", "governance"]
+
+  - id: "020c3-budget-dimensions"
+    title: "Budget Dimensions Extension"
+    description: |
+      Add ΩPR budget dimensions to RuntimeBudget:
+      - oprTurnsLeft (total coprocessor turns)
+      - callbackRoundtripsLeft (per-step callbacks)
+      - retriesLeft (per-step retries)
+      - Budget consumption in handlers
+      - Budget reporting
+    job_file: "020c3-budget-dimensions.md"
+    depends_on: ["020-types"]
+    estimated_hours: 1.5
+    tags: ["ceks", "budget"]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 4: Handlers (depend on Layer 3)
+  # Sequential: 020d1 enables 020d2, then 020d3
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: "020d1-opr-logic-handler"
+    title: "opr.logic.step Handler"
+    description: |
+      RuntimeDriver handler for logic solving:
+      - Load OprSession and work_state
+      - Build OprStepRequestEnvelope
+      - Call ΩPR kernel (LLM)
+      - Validate response (full validator matrix)
+      - Retry with PREVIOUS_ATTEMPTS on failure
+      - Update work_state artifact
+      - Record receipt
+      - Resume CEKS with MeaningVal
+    job_file: "020d1-opr-logic-handler.md"
+    depends_on: ["020c1-solver-frames", "020b1-validator-matrix", "020b2-retry-controller", "020b3-progress-invariants"]
+    estimated_hours: 4
+    tags: ["handler", "logic"]
+
+  - id: "020d2-opr-analyze-handler"
+    title: "opr.analyze.step Handler"
+    description: |
+      RuntimeDriver handler for dataflow analysis:
+      - Same structure as logic handler
+      - Domain-specific validation (interval, taint, etc.)
+      - Widening/narrowing policy enforcement
+      - Worklist progress checking
+    job_file: "020d2-opr-analyze-handler.md"
+    depends_on: ["020d1-opr-logic-handler"]
+    estimated_hours: 3
+    tags: ["handler", "analyze"]
+
+  - id: "020d3-callback-protocol"
+    title: "Callback Roundtrip Protocol"
+    description: |
+      Reentrancy: ΩPR calling back into CEKS:
+      - eval_lisp callback (pure evaluation only)
+      - artifact.get callback (fetch artifact content)
+      - facts.slice callback (query facts projection)
+      - CALLBACK_RESULTS injection format
+      - Correlation ID tracking
+      - Roundtrip budget enforcement
+    job_file: "020d3-callback-protocol.md"
+    depends_on: ["020d1-opr-logic-handler"]
+    estimated_hours: 3
+    tags: ["handler", "callback", "reentrancy"]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 5: Surface Syntax and Integration (depend on Layer 4)
+  # 020e1 and 020e2 can run in PARALLEL
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: "020e1-lisp-forms"
+    title: "Lisp Surface Syntax"
+    description: |
+      User-facing special forms for coprocessor:
+      - (logic.solve rules query :options ...)
+      - (analyze.solve ir :domain domain :options ...)
+      - (pipeline.run stages :input ...)
+      - Macro expansion to effect calls
+      - Option parsing and normalization
+    job_file: "020e1-lisp-forms.md"
+    depends_on: ["020d1-opr-logic-handler", "020d2-opr-analyze-handler"]
+    estimated_hours: 2
+    tags: ["syntax", "macros"]
+
+  - id: "020e2-integration-tests"
+    title: "Integration Tests"
+    description: |
+      End-to-end tests for coprocessor:
+      - Logic solve with semi-naive saturation
+      - Analyze solve with interval domain
+      - Retry behavior validation
+      - Callback roundtrip testing
+      - Budget exhaustion testing
+      - Receipt chain verification
+      - Replay determinism testing
+    job_file: "020e2-integration-tests.md"
+    depends_on: ["020e1-lisp-forms", "020d3-callback-protocol"]
+    estimated_hours: 4
+    tags: ["testing", "integration"]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LAYER 6: Advanced Features (independent - can run in PARALLEL)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - id: "020f1-telemetry"
+    title: "Coprocessor Telemetry"
+    description: |
+      Extended session events for observability:
+      - OprStepEvent (step start/end)
+      - ValidationFailureEvent (with error codes)
+      - RetryEvent (attempt tracking)
+      - CallbackRoundtripEvent (reentrancy tracking)
+      - Trace span integration
+    job_file: "020f1-telemetry.md"
+    depends_on: ["020-types"]
+    estimated_hours: 1.5
+    tags: ["advanced", "telemetry"]
+
+  - id: "020f2-replay"
+    title: "Deterministic Replay"
+    description: |
+      Receipt-based replay for coprocessor:
+      - Semantic key lookup
+      - Attempt selection policy
+      - Replay mode enforcement
+      - Divergence detection
+    job_file: "020f2-replay.md"
+    depends_on: ["020a4-attempt-log"]
+    estimated_hours: 2
+    tags: ["advanced", "replay"]
+
+# ═══════════════════════════════════════════════════════════════════
+# Execution Summary
+# ═══════════════════════════════════════════════════════════════════
+#
+# Total estimated hours: ~42 hours
+#
+# Parallel execution waves:
+#
+# Wave 1 (1 job):     020-types
+# Wave 2 (7 jobs):    020a1, 020a2, 020a3, 020a4, 020c2, 020c3, 020f1, 020f2
+# Wave 3 (3 jobs):    020b1, 020b3, 020c1
+# Wave 4 (1 job):     020b2
+# Wave 5 (1 job):     020d1
+# Wave 6 (2 jobs):    020d2, 020d3
+# Wave 7 (1 job):     020e1
+# Wave 8 (1 job):     020e2
+#
+# With 4 parallel agents, estimated wall-clock time: ~15 hours
+#
+# ═══════════════════════════════════════════════════════════════════
+# Key Dependencies to Note
+# ═══════════════════════════════════════════════════════════════════
+#
+# 1. 020d1 (logic handler) is the critical path - most things flow through it
+# 2. 020b1 (validator matrix) is the "typechecker" - core infrastructure
+# 3. 020c1 (solver frames) converts TS loops to CEKS frames - architectural change
+# 4. 020-types is the foundation - everything depends on it
+#
+# ═══════════════════════════════════════════════════════════════════
+# Existing Infrastructure to Reuse
+# ═══════════════════════════════════════════════════════════════════
+#
+# - src/core/oracle/receipts.ts - receiptKey(), ReceiptStore
+# - src/core/governance/enforcement.ts - three chokepoints, checkEffectAllowed
+# - src/core/provenance/evidence.ts - Evidence types, evidenceId()
+# - src/core/effects/opcall.ts - OpCall, Resumption
+# - src/core/solver/fixpoint.ts - iteration logic (to be converted)
+# - src/core/eval/values.ts - ResultVal, SolverVal
+#
+# ═══════════════════════════════════════════════════════════════════

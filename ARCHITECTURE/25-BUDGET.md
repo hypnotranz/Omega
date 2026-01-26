@@ -1,3 +1,130 @@
+# ⚠️ COMPLETE REDESIGN REQUIRED
+
+> ## Primitives Defined (Lisp Forms)
+>
+> | Form | Type | Current Implementation |
+> |------|------|----------------------|
+> | `(budget/remaining 'type)` | FFI | TypeScript Budget.remaining() |
+> | `(budget/has-remaining? 'type)` | FFI | TypeScript Budget.hasRemaining() |
+> | `(budget/report)` | FFI | TypeScript Budget.report() |
+> | `(with-budget limits body)` | Special Form | Creates scoped Budget |
+>
+> ## Current Implementation
+>
+> **External Budget class** passed manually to functions:
+> ```typescript
+> // Budget class (lines 85-192):
+> class Budget {
+>   consumeTokens(amount: number): void { this.consumed.tokens += amount; this.check('tokens'); }
+>   consumeIteration(): void { this.consumed.iterations += 1; this.check('iterations'); }
+>   check(type: BudgetType): void {
+>     if (!this.hasRemaining(type)) throw new BudgetExceededError(...);
+>   }
+> }
+>
+> // Manual integration in evalFixpoint (lines 259-272):
+> function evalFixpoint(body, env, options, budget): Value {
+>   for (let i = 0; i < options.maxIterations; i++) {
+>     budget.consumeIteration();  // ← Manual call, can be forgotten!
+>     const value = evalExpr(body, env, ...);
+>     budget.check('time');       // ← Manual call
+>   }
+> }
+>
+> // Manual integration in LLM adapter (lines 213-245):
+> async complete(prompt: string): Promise<string> {
+>   this.budget.check('tokens');  // ← Manual call before
+>   const response = await this.client.chat.completions.create(...);
+>   this.budget.consumeTokens(response.usage.total_tokens);  // ← Manual call after
+> }
+> ```
+>
+> ## CEKS Redesign Instructions
+>
+> ### 1. Add Budget to State (already exists, ENFORCE IT):
+> ```typescript
+> type State = {
+>   control: Control;
+>   env: Ctx;
+>   store: Store;
+>   kont: Kont;
+>   budget: Budget;  // ← Already in 32-6, but NOT enforced
+>   // ...
+> };
+> ```
+>
+> ### 2. Check budget at TOP of step() - CANNOT BE BYPASSED:
+> ```typescript
+> function step(s: State): StepOutcome {
+>   // ══════════════════════════════════════════════════════
+>   // FIRST: Budget check - KERNEL ENFORCEMENT
+>   // ══════════════════════════════════════════════════════
+>   if (s.budget) {
+>     // Check all budget dimensions
+>     if (!s.budget.hasRemaining('steps')) {
+>       return { tag: 'BudgetExceeded', type: 'steps', consumed: s.budget.consumed };
+>     }
+>     if (!s.budget.hasRemaining('time')) {
+>       return { tag: 'BudgetExceeded', type: 'time', consumed: s.budget.consumed };
+>     }
+>     // Consume step automatically
+>     s.budget.consumeStep();
+>   }
+>
+>   // ... rest of step() proceeds only if budget OK
+> }
+> ```
+>
+> ### 3. Track token consumption in effect handlers:
+> ```typescript
+> // When handling 'llm.complete' effect:
+> case 'llm.complete': {
+>   const response = await adapter.complete(prompt);
+>   s.budget.consumeTokens(response.usage.total_tokens);
+>   s.budget.consumeCost(estimateCost(response.usage));
+>   return continueWith(s, response.content);
+> }
+> ```
+>
+> ### 4. Handle (with-budget) by stacking budgets:
+> ```typescript
+> if (isWithBudget(s.control.expr)) {
+>   const [_, limits, body] = s.control.expr;
+>   const scopedBudget = new Budget(limits);
+>   return {
+>     ...s,
+>     control: { tag: 'expr', expr: body },
+>     kont: [{ tag: 'WithBudgetK', parentBudget: s.budget }, ...s.kont],
+>     budget: scopedBudget,
+>   };
+> }
+>
+> // When WithBudgetK pops:
+> if (s.kont[0]?.tag === 'WithBudgetK' && s.control.tag === 'value') {
+>   const frame = s.kont[0] as WithBudgetKFrame;
+>   // Merge consumed into parent
+>   frame.parentBudget.consumeTokens(s.budget.consumed.tokens);
+>   frame.parentBudget.consumeCost(s.budget.consumed.cost);
+>   return {
+>     ...s,
+>     budget: frame.parentBudget,
+>     kont: s.kont.slice(1),
+>   };
+> }
+> ```
+>
+> ### 5. Keep FFI for queries:
+> - `budget/remaining` - read remaining
+> - `budget/has-remaining?` - boolean check
+> - `budget/report` - full report
+>
+> ## References
+> - See `State.budget` in 32-6 CEKS specification (exists but unenforced)
+> - See governance profiles in 32-4
+> - See [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 25: Budget (Resource Tracking & Enforcement)
 
 ## The Problem

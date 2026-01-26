@@ -27,11 +27,16 @@
     "omega": "./bin/omega.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && npm run bundle",
+    "build:tsc": "tsc -p tsconfig.json",
+    "build:dev": "esbuild bin/omega-repl.ts --bundle --platform=node --outfile=dist/omega-repl.mjs --format=esm",
+    "watch": "esbuild bin/omega-repl.ts --bundle --platform=node --outfile=dist/omega-repl.mjs --format=esm --watch",
+    "bundle": "esbuild bin/omega-repl.ts --bundle --platform=node --outfile=dist/omega-repl.mjs --format=esm",
     "test": "vitest run",
     "test:watch": "vitest",
     "omega": "npx tsx bin/omega.ts",
     "omega-repl": "npx tsx bin/omega-repl.ts",
+    "omega-fast": "node dist/omega-repl.mjs",
     "omega-debugger": "npx tsx bin/omega-debugger.ts",
     "prepublishOnly": "npm run build && npm test"
   },
@@ -48,6 +53,7 @@
   ],
   "devDependencies": {
     "@types/node": "^25.0.9",
+    "esbuild": "^0.20.0",
     "typescript": "^5.3.0",
     "vitest": "^1.0.0"
   },

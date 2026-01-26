@@ -1,3 +1,73 @@
+# ⚠️ COMPLETE REDESIGN REQUIRED
+
+> ## Primitives Defined
+>
+> **NONE** - This spec defines NO Lisp primitives.
+> It's pure TypeScript infrastructure:
+> - `Capability` interface
+> - `CapabilityManager` class
+> - `StepCounter` class
+> - `MemoryLimiter` class
+> - `SandboxConfig` type
+>
+> ## Current Implementation
+>
+> **TypeScript wrapper classes** passed as parameters:
+> ```typescript
+> // StepCounter passed to evalExpr (line 318):
+> function evalExpr(expr, env, cont, ffi, counter: StepCounter): Value {
+>   counter.step();  // ← Manual call, can be forgotten
+> }
+>
+> // EnforcedFFI wraps base FFI externally:
+> ffi.call('world.read', [path], { capability: readCap });
+> ```
+>
+> ## CEKS Redesign Instructions
+>
+> ### 1. Add to State type (in step.ts):
+> ```typescript
+> type State = {
+>   // ...existing fields...
+>   sec: SecurityContext;  // Already exists, need to ENFORCE
+> };
+>
+> interface SecurityContext {
+>   capabilities: Map<string, Capability>;
+>   stepCount: number;
+>   maxSteps: number;
+>   memoryUsed: number;
+>   maxMemory: number;
+> }
+> ```
+>
+> ### 2. Check at TOP of step() function:
+> ```typescript
+> function step(s: State): StepOutcome {
+>   // MANDATORY: Check before ANY evaluation
+>   s.sec.stepCount++;
+>   if (s.sec.stepCount > s.sec.maxSteps) {
+>     return { tag: 'StepLimitExceeded', steps: s.sec.stepCount };
+>   }
+>   // ...rest of step
+> }
+> ```
+>
+> ### 3. Check capabilities on effect dispatch:
+> ```typescript
+> case 'Effect': {
+>   const requiredCap = effectToCapability(s.control.effect);
+>   if (!s.sec.capabilities.has(requiredCap)) {
+>     return { tag: 'CapabilityDenied', required: requiredCap };
+>   }
+>   // ...dispatch effect
+> }
+> ```
+>
+> ### 4. NO Lisp primitives needed - this is kernel infrastructure
+
+---
+
 # 21: Security (Sandboxing & Capabilities)
 
 ## Threat Model

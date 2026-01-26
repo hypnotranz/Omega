@@ -1,3 +1,32 @@
+# ✅ NO REDESIGN REQUIRED
+
+> **THIS SPEC IS ALREADY LANGUAGE-LEVEL AND WORKS WITH CEKS**
+>
+> ## Why This Doesn't Need Redesign
+>
+> Unlike specs 21-26, this specification describes **return types/data structures**,
+> not evaluation mechanics. Outcomes are structured sum types that propagate through
+> computation regardless of whether evaluation is recursive or CEKS-based:
+>
+> ```typescript
+> // Outcomes are data, not kernel mechanics
+> type Outcome = OkOutcome | ProposedOutcome | NonconvergedOutcome | ...
+>
+> // Works the same whether eval is recursive or CEKS
+> function bindOutcome<A, B>(o: Outcome<A>, f: (a: A) => Outcome<B>): Outcome<B>
+> ```
+>
+> ## Context
+>
+> This spec was written pre-CEKS, but it happens to be at the right abstraction level.
+> Outcomes are how computations report results - this is language semantics, not
+> kernel implementation.
+>
+> ## References
+> - See [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 27: Outcomes (Structured Return Types)
 
 ## The Problem with Exceptions

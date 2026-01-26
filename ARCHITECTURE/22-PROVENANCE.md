@@ -1,3 +1,95 @@
+# ⚠️ COMPLETE REDESIGN REQUIRED
+
+> ## Primitives Defined (Lisp Forms)
+>
+> | Form | Type | Current Implementation |
+> |------|------|----------------------|
+> | `(evidence/capture ref :lines start end)` | FFI | TypeScript function |
+> | `(evidence/id ev)` | FFI | TypeScript getter |
+> | `(evidence/ref ev)` | FFI | TypeScript getter |
+> | `(evidence/snippet ev)` | FFI | TypeScript getter |
+> | `(evidence/fingerprint ev)` | FFI | TypeScript getter |
+> | `(evidence/verify ev)` | FFI | TypeScript function |
+> | `(evidence/stale? ev)` | FFI | TypeScript function |
+> | `(evidence/register ev)` | FFI | TypeScript function |
+> | `(claim/observed text :evidence ev)` | FFI | TypeScript function |
+> | `(finding text :evidence ev :mode m)` | FFI | TypeScript function |
+>
+> ## Current Implementation
+>
+> **All FFI functions** calling TypeScript classes:
+> ```typescript
+> // EvidenceRegistry class (lines 276-327)
+> class EvidenceRegistry {
+>   private evidence: Map<EvidenceId, Evidence>;
+>   register(ev: Evidence): void { ... }
+> }
+>
+> // Registered as FFI:
+> ffi.register('evidence/capture', (ref, opts) => captureEvidence(world, ref, opts));
+> ffi.register('evidence/verify', (ev) => verifyEvidence(ev, world));
+> ```
+>
+> ## CEKS Redesign Instructions
+>
+> ### 1. Add EvidenceRegistry to State (not external):
+> ```typescript
+> type State = {
+>   // ...existing fields...
+>   provenance: ProvenanceState;  // Already exists, MOVE registry here
+> };
+>
+> interface ProvenanceState {
+>   registry: Map<EvidenceId, Evidence>;
+>   graph: ProvenanceGraph;
+>   currentChain: EvidenceId[];  // Evidence cited in current computation
+> }
+> ```
+>
+> ### 2. Auto-capture on world reads (in effect handler):
+> ```typescript
+> // When handling 'world.read' effect:
+> case 'world.read': {
+>   const content = store.read(ref);
+>   const ev = captureEvidence(ref, content);
+>   s.provenance.registry.set(ev.id, ev);
+>   s.provenance.currentChain.push(ev.id);  // AUTO-TRACK
+>   return continueWith(s, content);
+> }
+> ```
+>
+> ### 3. Add provenance mark to Kont frames:
+> ```typescript
+> interface Frame {
+>   tag: string;
+>   // ...existing fields...
+>   provenanceMark?: {
+>     evidenceIds: EvidenceId[];
+>     worldFingerprint: string;
+>   };
+> }
+> ```
+>
+> ### 4. Keep FFI for explicit operations:
+> - `evidence/capture` - explicit capture (still useful)
+> - `evidence/verify` - staleness check
+> - `claim/*`, `finding` - report building
+>
+> ### 5. Auto-verify on frame pop:
+> ```typescript
+> // When popping frames, verify evidence still fresh
+> if (frame.provenanceMark) {
+>   for (const evId of frame.provenanceMark.evidenceIds) {
+>     const ev = s.provenance.registry.get(evId);
+>     if (ev && isStale(ev, s.store)) {
+>       return { tag: 'StaleEvidence', evidenceId: evId };
+>     }
+>   }
+> }
+> ```
+
+---
+
 # 22: Provenance (Evidence-Based Reasoning)
 
 ## The Core Problem

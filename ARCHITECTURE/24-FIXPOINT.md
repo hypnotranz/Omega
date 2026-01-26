@@ -1,3 +1,136 @@
+# ⚠️ REDESIGN RECOMMENDED
+
+> ## Primitives Defined (Lisp Forms)
+>
+> | Form | Type | Current Implementation |
+> |------|------|----------------------|
+> | `(fixpoint body :max-iters n)` | Special Form | `evalFixpoint()` function |
+> | `(fixpoint body :max-iters n :mode m)` | Special Form | `evalFixpoint()` with mode |
+> | `(fixpoint/outcome body ...)` | Special Form | Returns structured outcome |
+> | `(fixpoint/debug body ...)` | FFI | Verbose logging mode |
+> | `(fixpoint/trace body ...)` | FFI | Returns full trace |
+>
+> ## Current Implementation
+>
+> **External function** wrapping evalExpr in a for-loop:
+> ```typescript
+> // evalFixpoint (lines 165-232):
+> function evalFixpoint(
+>   body: Value,
+>   env: Environment,
+>   world: World,
+>   artifacts: ArtifactStore,
+>   options: FixpointOptions,
+>   cont: Continuation,
+>   ffi: FFI
+> ): Value {
+>   const signatures: string[] = [];
+>   for (let i = 0; i < maxIterations; i++) {
+>     lastValue = evalExpr(body, env, cont, ffi);  // ← Recursive call
+>     const sig = computeStateSignature(env, world, artifacts, mode);
+>     if (sig === signatures[signatures.length - 1]) break;  // Converged
+>     signatures.push(sig);
+>   }
+>   return lastValue;
+> }
+> ```
+>
+> ## CEKS Redesign Instructions
+>
+> ### 1. Add FixpointState to State:
+> ```typescript
+> type State = {
+>   // ...existing fields...
+>   fixpoint?: FixpointState;
+> };
+>
+> interface FixpointState {
+>   body: Expr;
+>   iteration: number;
+>   maxIterations: number;
+>   mode: SignatureMode;
+>   signatures: string[];
+>   lastValue: Value | null;
+> }
+> ```
+>
+> ### 2. Handle (fixpoint) by pushing FixpointK frame:
+> ```typescript
+> function step(s: State): StepOutcome {
+>   if (s.control.tag === 'expr' && isFixpoint(s.control.expr)) {
+>     const [_, body, ...opts] = s.control.expr;
+>     const { maxIterations, mode } = parseFixpointOpts(opts);
+>
+>     // Initialize fixpoint state, push frame, evaluate body
+>     return {
+>       ...s,
+>       control: { tag: 'expr', expr: body },
+>       kont: [{
+>         tag: 'FixpointK',
+>         body,
+>         iteration: 0,
+>         maxIterations,
+>         mode,
+>         signatures: [],
+>       }, ...s.kont],
+>     };
+>   }
+> }
+> ```
+>
+> ### 3. On FixpointK frame pop, check convergence:
+> ```typescript
+> if (s.kont[0]?.tag === 'FixpointK' && s.control.tag === 'value') {
+>   const frame = s.kont[0] as FixpointKFrame;
+>   const sig = computeStateSignature(s);
+>
+>   // Converged?
+>   if (frame.signatures.length > 0 && sig === frame.signatures[frame.signatures.length - 1]) {
+>     return {
+>       ...s,
+>       control: { tag: 'value', value: s.control.value },
+>       kont: s.kont.slice(1),  // Pop frame, done
+>     };
+>   }
+>
+>   // Max iterations?
+>   if (frame.iteration >= frame.maxIterations) {
+>     return { tag: 'Nonconverged', value: s.control.value, iterations: frame.iteration };
+>   }
+>
+>   // Cycle detection
+>   if (frame.signatures.includes(sig)) {
+>     return { tag: 'Cycle', value: s.control.value, cycleLength: ... };
+>   }
+>
+>   // Continue: re-evaluate body
+>   return {
+>     ...s,
+>     control: { tag: 'expr', expr: frame.body },
+>     kont: [{
+>       ...frame,
+>       iteration: frame.iteration + 1,
+>       signatures: [...frame.signatures, sig],
+>     }, ...s.kont.slice(1)],
+>   };
+> }
+> ```
+>
+> ### 4. Integrate with Budget checking:
+> ```typescript
+> // At start of FixpointK handling:
+> if (s.budget && !s.budget.hasRemaining('iterations')) {
+>   return { tag: 'BudgetExceeded', type: 'iterations' };
+> }
+> s.budget?.consumeIteration();
+> ```
+>
+> ## References
+> - See effect handlers in 32-6 CEKS specification
+> - See [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 24: Fixpoint (Convergence Detection)
 
 ## The Problem

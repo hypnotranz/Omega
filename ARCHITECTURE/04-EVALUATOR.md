@@ -1,3 +1,48 @@
+# ⛔ OBSOLETE - REPLACED BY CEKS MACHINE
+
+> **THIS ENTIRE SPEC IS SUPERSEDED BY 32-6 (CEKS MACHINE)**
+>
+> ## Why This Is Obsolete
+>
+> This spec describes a **recursive evaluator** (~200 lines of `evalExpr` calling itself).
+> The 32-series introduced a **CEKS machine** (Control, Environment, Kontinuation, Store)
+> which is a fundamentally different architecture:
+>
+> ```typescript
+> // THIS SPEC (RECURSIVE EVAL):
+> function evalExpr(expr: Value, env: Env, cont: Cont, ffi: FFI): Value {
+>   if (isSymbol(expr)) return envLookup(env, expr);
+>   if (isAtom(expr)) return expr;
+>   // ... recursively calls evalExpr
+> }
+>
+> // 32-6 (CEKS MACHINE):
+> function step(s: State): StepOutcome {
+>   // Explicit state machine - no recursion
+>   // State contains: control, env, store, kont, handlers
+>   // Plus: budget, sec, provenanceGraph (governance fields)
+> }
+> ```
+>
+> ## Critical Difference
+>
+> - **Recursive eval**: Governance (budget, security, provenance) must be passed as
+>   parameters or wrapped externally - CAN BE BYPASSED
+> - **CEKS machine**: Governance is IN the State, checked on EVERY step - CANNOT BE BYPASSED
+>
+> ## What To Use Instead
+>
+> - See **32-6** for CEKS machine specification
+> - See **32-1** for kernel forms (what replaces special forms)
+> - The ~200 line recursive eval is replaced by `step()` function + explicit State
+>
+> ## References
+> - [32-6 CEKS Machine](32-6-CEKS.md)
+> - [32-1 Foundations](32-1-FOUNDATIONS.md)
+> - [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 04: Evaluator (Pure Interpreter)
 
 ## Design Goal

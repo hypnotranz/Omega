@@ -1,3 +1,50 @@
+# ⚠️ PARTIALLY SUPERSEDED BY 32-6
+
+> **THIS SPEC IS EXTENDED BY 32-6 WITH CTX AND SEALING**
+>
+> ## What's Still Valid
+>
+> The basic concept of Environment as lexical scope (chain of frames mapping names
+> to values) is still correct. This is fundamental to any Lisp.
+>
+> ## What 32-6 Adds
+>
+> The 32-series extends Environment to `Ctx` (Context) which:
+>
+> ```typescript
+> // THIS SPEC (basic environment):
+> interface Environment {
+>   bindings: Map<string, Value>;
+>   parent: Environment | null;
+> }
+>
+> // 32-6 ADDS (Ctx = Context-as-Value):
+> interface Ctx {
+>   bindings: Map<string, Value>;
+>   parent: Ctx | null;
+>   sealed?: boolean;        // Immutable after seal
+>   capabilities?: Set<Cap>; // What this context can do
+>   phase?: number;          // Macro expansion phase
+> }
+>
+> // Ctx can be passed as a VALUE:
+> (define frozen-ctx (seal (current-ctx)))
+> (eval-in frozen-ctx '(+ x y))
+> ```
+>
+> ## Key Additions
+>
+> - **Sealing**: `(seal ctx)` makes context immutable
+> - **Ctx-as-value**: Contexts can be captured, stored, passed
+> - **Capabilities**: Contexts carry security permissions
+> - **Phase separation**: Different contexts for compile vs runtime
+>
+> ## References
+> - [32-6 CEKS Machine - Ctx](32-6-CEKS.md)
+> - [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 03: Environment (Namespaces & Bindings)
 
 ## What Is Environment?

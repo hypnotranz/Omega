@@ -26,7 +26,7 @@ import { RuntimeImpl } from "../src/core/effects/runtimeImpl";
 import { SnapshotRepo } from "../src/core/oracle/snapshots";
 import { InMemoryReceiptStore } from "../src/core/oracle/receipts";
 import { installPrims } from "../test/helpers/prims";
-import { createOpenAIAdapter } from "../src/core/oracle/adapters";
+import { createOpenAIAdapter, createAnthropicAdapter } from "../src/core/oracle/adapters";
 import { DepthTrackingAdapter } from "../src/core/oracle/adapters/types";
 import type { OracleAdapter } from "../src/core/oracle/adapter";
 import type { State, Frame } from "../src/core/eval/machine";
@@ -1325,7 +1325,20 @@ function createReplRuntime(): RuntimeImpl {
   const snapshots = new SnapshotRepo();
   const receipts = new InMemoryReceiptStore("off");
   const scripted = process.env.OMEGA_SCRIPTED_ORACLE === "1";
-  const baseOracle = scripted ? undefined : createOpenAIAdapter();
+
+  // Select adapter: OMEGA_ADAPTER=anthropic|openai (default: openai)
+  const adapterType = process.env.OMEGA_ADAPTER ?? "openai";
+  const model = process.env.OMEGA_MODEL; // Optional model override
+
+  let baseOracle;
+  if (scripted) {
+    baseOracle = undefined;
+  } else if (adapterType === "anthropic") {
+    baseOracle = createAnthropicAdapter(model ? { model } : undefined);
+  } else {
+    baseOracle = createOpenAIAdapter(model ? { model } : undefined);
+  }
+
   const oracle = baseOracle
     ? new DepthTrackingAdapter(baseOracle, 8)
     : new ScriptedOracleAdapter();
@@ -2663,19 +2676,21 @@ async function processReplCommand(
   // Otherwise, evaluate as Lisp expression
   replState.sessionWriter?.input(trimmed);
   const isEffectCall = /^\(effect\b/.test(trimmed);
+  const useMockEffects = process.env.OMEGA_MOCK_EFFECTS === "1";
 
   try {
-    if (!isEffectCall) {
+    // Use mock effects only if explicitly enabled (for testing)
+    if (isEffectCall && useMockEffects) {
+      const { value, state } = handleEffectExpression(trimmed, replState);
+      log("=>", valToSexp(value));
+      replState.sessionWriter?.result(valToSexp(value));
+      replState.sessionWriter?.checkpoint(state, "manual");
+    } else {
       replState.sessionWriter?.step(trimmed);
       const { value, replState: newState, state } = await evalInRepl(trimmed, replState);
       replState = newState;
       replState.sessionState = state;
       replState.baseState = state;
-      log("=>", valToSexp(value));
-      replState.sessionWriter?.result(valToSexp(value));
-      replState.sessionWriter?.checkpoint(state, "manual");
-    } else {
-      const { value, state } = handleEffectExpression(trimmed, replState);
       log("=>", valToSexp(value));
       replState.sessionWriter?.result(valToSexp(value));
       replState.sessionWriter?.checkpoint(state, "manual");

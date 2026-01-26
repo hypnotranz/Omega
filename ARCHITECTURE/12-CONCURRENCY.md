@@ -1,3 +1,50 @@
+# ⚠️ INCOMPLETE - MISSING SICP PRIMITIVES
+
+> **THIS SPEC HAS ASYNC/PROMISES BUT LACKS SICP CONCURRENCY PRIMITIVES**
+>
+> ## What This Spec Has
+>
+> - Async/await for I/O operations ✓
+> - Promises for concurrent requests ✓
+> - Single-threaded evaluator with async I/O ✓
+>
+> ## What's Missing (Specified in 32-9 and 32-10)
+>
+> The SICP tower of abstraction includes several concurrency primitives that
+> this spec doesn't cover:
+>
+> ```lisp
+> ;; SICP STREAMS (32-9) - lazy infinite sequences
+> (define ones (cons-stream 1 ones))
+> (define integers (cons-stream 1 (stream-map 1+ integers)))
+> (stream-take 5 integers)  ; → (1 2 3 4 5)
+>
+> ;; AMB / NONDETERMINISM (32-10) - backtracking search
+> (define (pythagorean-triples)
+>   (let ((a (amb 1 2 3 4 5)))
+>     (let ((b (amb 1 2 3 4 5)))
+>       (let ((c (amb 1 2 3 4 5)))
+>         (require (= (+ (* a a) (* b b)) (* c c)))
+>         (list a b c)))))
+>
+> ;; COROUTINES via continuations - cooperative multitasking
+> ;; CONSTRAINT PROPAGATION - propagator networks
+> ```
+>
+> ## Recommendation
+>
+> This spec is valid for basic async I/O. For full SICP concurrency support:
+> - See **32-9** for streams (delay/force/cons-stream)
+> - See **32-10** for amb (nondeterministic choice with backtracking)
+> - See **32-9** for constraint propagation (propagators)
+>
+> ## References
+> - [32-9 SICP Tower Modules](32-9-SICP-TOWER.md)
+> - [32-10 amb + syntax-rules](32-10-AMB-SYNTAX.md)
+> - [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 12: Concurrency Model
 
 ## Overview

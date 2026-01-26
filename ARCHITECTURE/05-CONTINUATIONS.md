@@ -1,3 +1,55 @@
+# ⚠️ SUPERSEDED BY 32-6 EXPLICIT KONT FRAMES
+
+> **THIS SPEC DESCRIBES CPS-STYLE CONTINUATIONS - 32-6 USES EXPLICIT FRAMES**
+>
+> ## What Changed
+>
+> This spec describes continuations as captured call stacks in a recursive evaluator.
+> The 32-series uses **explicit Kont (Kontinuation) frames** in the CEKS machine:
+>
+> ```typescript
+> // THIS SPEC (implicit continuation in recursive call):
+> function evalExpr(expr, env, cont, ffi) {
+>   // cont is "what to do with result"
+>   // Captured via call/cc as a function
+> }
+>
+> // 32-6 (explicit Kont frames in State):
+> type Frame =
+>   | { tag: 'ApplyFrame'; fn: Value; args: Value[] }
+>   | { tag: 'IfFrame'; conseq: Expr; alt: Expr; env: Ctx }
+>   | { tag: 'LetFrame'; bindings: [string, Value][]; body: Expr }
+>   | { tag: 'HandlerFrame'; handlers: Handler[] }
+>   | { tag: 'FixpointFrame'; iteration: number; lastSig: string }
+>   // ... each continuation type is explicit
+>
+> type State = {
+>   control: Control;
+>   env: Ctx;
+>   store: Store;
+>   kont: Frame[];  // ← Explicit stack of frames
+>   handlers: HandlerFrame[];
+> };
+> ```
+>
+> ## Why This Matters
+>
+> - **Explicit frames**: Each frame type can carry provenance marks, budget tracking
+> - **Serializable**: Kont stack can be saved/restored (time-travel debugging)
+> - **Inspectable**: Debugger can examine frame stack without magic
+> - **Governance**: Frames can enforce security at each return point
+>
+> ## What's Still Valid
+>
+> The *concepts* (call/cc, escaping, time-travel) are still valid.
+> The *implementation* changes from implicit to explicit.
+>
+> ## References
+> - [32-6 CEKS Machine - Kont Frames](32-6-CEKS.md)
+> - [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 05: Continuations (First-Class Control Flow)
 
 ## What Is a Continuation?

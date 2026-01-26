@@ -30,6 +30,7 @@ async function runRepl(commands: string[], targetDir: string): Promise<ReplRun> 
         ...process.env,
         OMEGA_SESSION_DIR: targetDir,
         OMEGA_SCRIPTED_ORACLE: "1",
+        OMEGA_MOCK_EFFECTS: "1",
         CI: "1",
       },
       shell: true,

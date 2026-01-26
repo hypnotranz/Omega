@@ -1,3 +1,34 @@
+# ✅ NO REDESIGN REQUIRED
+
+> **THIS SPEC IS APPLICATION LAYER - ABOVE THE KERNEL**
+>
+> ## Why This Doesn't Need Redesign
+>
+> Unlike specs 21-26, this specification describes **application-level functionality**
+> that sits ABOVE the kernel, not within it. Experts/intent compilation is about
+> using LLMs to generate Lisp code - it doesn't care how that code is evaluated:
+>
+> ```typescript
+> // This is LLM prompting, not kernel mechanics
+> async function compileIntent(text: string, role: ExpertRole, ...): Promise<Value> {
+>   const prompt = [TOOL_CONTRACT, buildRoleOverlay(role), ...].join('\n');
+>   const response = await llm.complete(prompt);
+>   return read(response.trim());  // Returns Lisp code to be evaluated
+> }
+> ```
+>
+> ## Context
+>
+> This spec was written pre-CEKS, but it happens to be at the right abstraction level.
+> Expert layers use the kernel - they don't need kernel affordances themselves.
+> The three-layer architecture (Tool Contract, Role Overlay, Task Envelope) is
+> independent of whether evaluation is recursive or CEKS-based.
+>
+> ## References
+> - See [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 29: Experts (Intent Compilation & Expert Layers)
 
 ## The Bridge Problem

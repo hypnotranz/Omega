@@ -1,3 +1,45 @@
+# ⚠️ PARTIALLY SUPERSEDED BY 32-6
+
+> **THIS SPEC IS EXTENDED BY 32-6 WITH NEW VALUE TYPES**
+>
+> ## What's Still Valid
+>
+> The basic type hierarchy (Atom, Symbol, List, Procedure) is still correct.
+> These are the foundational Lisp types that don't change.
+>
+> ## What 32-6 Adds
+>
+> The 32-series adds ~10 new value types for the dual-plane semantics:
+>
+> ```typescript
+> // THIS SPEC (basic Lisp types):
+> type Value = Atom | Symbol | List | Procedure
+>
+> // 32-6 ADDS:
+> type Value = ... |
+>   Meaning |      // Semantic interpretation with denotation, residual, confidence
+>   Dist |         // Probability distributions
+>   Engine |       // LLM adapter handle
+>   Prompt |       // Structured LLM prompt
+>   Policy |       // Governance policy
+>   Ctx |          // Context-as-value (sealing)
+>   Receipt |      // Proof of computation
+>   Obligation |   // Deferred verification
+>   Stream |       // Lazy sequences (SICP)
+>   // ...
+> ```
+>
+> ## Recommendation
+>
+> Read this spec for foundational types, then see 32-6 for the extended type system
+> that supports inference, governance, and SICP primitives.
+>
+> ## References
+> - [32-6 CEKS Machine - Value Types](32-6-CEKS.md)
+> - [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 02: Types (Core Data Structures)
 
 ## The Type Hierarchy

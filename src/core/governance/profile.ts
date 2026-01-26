@@ -107,6 +107,8 @@ export type NormalizedProfile = Profile & {
 const DEFAULT_ALLOWED_OPS = new Set<string>([
   "infer.op", "int.op", "search.op", "rewrite.op", "oracle.apply.op",
   "amb.op", "amb.choose", "amb.fail", "observe.op", "tool.op", "commit.op",
+  // System effects for orchestration
+  "shell.op", "file.read.op", "file.write.op",
 ]);
 
 const DEFAULT_ORACLE_REQS: OracleReqTag[] = [
@@ -336,9 +338,11 @@ export const PROFILE_PRAGMATIC: NormalizedProfile = makeProfile({
   caps: [
     "cap.eval", "cap.apply", "cap.observe", "cap.infer",
     "cap.test", "cap.commit.rewrite", "cap.commit.method",
-    "cap.generic.autofill"
+    "cap.generic.autofill",
+    // System capabilities for orchestration
+    "shell", "file.read", "file.write"
   ],
-  ops: ["infer.op", "int.op", "search.op", "rewrite.op", "oracle.apply.op", "amb.op", "amb.choose", "amb.fail", "observe.op", "commit.op"],
+  ops: ["infer.op", "int.op", "search.op", "rewrite.op", "oracle.apply.op", "amb.op", "amb.choose", "amb.fail", "observe.op", "commit.op", "shell.op", "file.read.op", "file.write.op"],
   oracleReqs: ["ReqEval", "ReqApply", "ReqObserve", "ReqTest", "ReqCommit"],
   budgets: {
     maxOracleTurns: 10_000,

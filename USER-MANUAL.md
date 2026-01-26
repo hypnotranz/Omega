@@ -253,7 +253,13 @@ const result = await runtime.eval('(effect infer.op "Hello")');
 ### REPL
 
 ```bash
+# Development mode (slower startup ~7s, TypeScript on-the-fly)
 npx tsx bin/omega-repl.ts
+
+# Fast mode (0.3s startup, requires npm run build)
+npm run omega-fast
+# or directly:
+node dist/omega-repl.mjs
 ```
 
 ```
@@ -263,6 +269,33 @@ npx tsx bin/omega-repl.ts
 Ω> (effect infer.op "What is 2+2?")
 => "4"
 ```
+
+### Build
+
+```bash
+# Build everything (TypeScript + bundled fast version)
+npm run build
+
+# TypeScript only
+npm run build:tsc
+
+# Bundle only (requires TypeScript build first)
+npm run bundle
+```
+
+The `npm run build` creates both the regular dist files AND the bundled `dist/omega-repl.mjs` which starts in ~0.3 seconds vs ~7 seconds for tsx.
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `OMEGA_ADAPTER` | `openai` (default) or `anthropic` |
+| `OMEGA_MODEL` | Override model (e.g., `gpt-4o`, `claude-sonnet-4-20250514`) |
+| `OMEGA_SESSION_DIR` | Directory for session files |
+| `OMEGA_SCRIPTED_ORACLE` | `1` to use scripted oracle (testing) |
+| `OMEGA_MOCK_EFFECTS` | `1` to mock effects (testing) |
 
 ---
 
@@ -276,6 +309,54 @@ npx tsx bin/omega-repl.ts
 | `(effect infer.op (list "a" "b"))` | Call LLM with concatenated prompt |
 | `(effect amb.choose (list thunks...))` | Pick one, backtrack on fail |
 | `(effect amb.fail "reason")` | Fail and backtrack |
+| `(effect shell.op "command")` | Execute shell command, return stdout |
+| `(effect file.read.op "path")` | Read file contents |
+| `(effect file.write.op "path" "content")` | Write content to file |
+
+### System Effects (Orchestration)
+
+Execute shell commands and perform file I/O:
+
+```lisp
+;; Run a shell command
+(effect shell.op "echo hello")
+=> "hello"
+
+;; Read a file
+(effect file.read.op "config.json")
+=> "{\"key\": \"value\"}"
+
+;; Write a file
+(effect file.write.op "output.txt" "result data")
+=> ()
+```
+
+### Reentrant Orchestration
+
+Omega programs can spawn other Omega programs:
+
+```lisp
+;; orchestrator.scm - spawns workers
+(begin
+  ;; Write task for worker
+  (effect file.write.op "task.txt" "process this data")
+
+  ;; Spawn worker (uses fast bundled mode)
+  (effect shell.op "node dist/omega-repl.mjs -c \"(load \\\"worker.scm\\\")\"")
+
+  ;; Read result
+  (effect file.read.op "result.txt"))
+
+;; worker.scm - processes task
+(begin
+  (define task (effect file.read.op "task.txt"))
+  (define result (effect infer.op (list "Process: " task)))
+  (effect file.write.op "result.txt" result))
+```
+
+**Trace visibility:**
+- Spawn via `shell.op`: Child trace is separate (opaque to parent)
+- Call via `infer.op`: Unified trace (LLM sees full context)
 
 ### Primitives
 

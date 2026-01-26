@@ -1,3 +1,45 @@
+# ⚠️ PARTIAL REDESIGN - ORACLE PROTOCOL ADDRESSES THIS
+
+> **THIS SPEC WAS DESIGNED PRE-CEKS - PARTIALLY ADDRESSED BY 32-SERIES**
+>
+> ## Current Status
+>
+> This specification was written assuming LambdaLLM's recursive `evalExpr` evaluator.
+> It describes session control as an **external wrapper** (EnforcedFFI, SessionEnforcer):
+>
+> ```typescript
+> // CURRENT (WRAPPER PATTERN - lines 225-243):
+> class EnforcedFFI implements FFI {
+>   call(name: string, args: Value[]): Value {
+>     this.enforcer.checkOperation(name, args);  // ← WRAPPER enforcement
+>     this.audit.log({ op: name, args, time: Date.now() });
+>     return this.base.call(name, args);
+>   }
+> }
+> ```
+>
+> ## What 32-Series Provides
+>
+> The 32-series introduced the **Oracle Protocol** (32-2, 32-5) which addresses
+> host control through explicit request/response messages:
+>
+> ```typescript
+> // 32-SERIES ORACLE PROTOCOL:
+> // Req.Apply, Req.Tool, Req.Test, Req.Return, etc.
+> // Host receives requests, controls what executes
+> ```
+>
+> ## Recommendation
+>
+> Finish implementing the Oracle protocol from 32-2/32-5. The session wrapper
+> pattern here is superseded by the more principled Oracle approach.
+>
+> ## References
+> - See Oracle Protocol in 32-2 and 32-5
+> - See [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 28: Session (Host-Controlled Execution)
 
 ## The Trust Boundary Problem

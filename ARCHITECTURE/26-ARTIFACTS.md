@@ -1,3 +1,138 @@
+# ⚠️ REDESIGN RECOMMENDED
+
+> ## Primitives Defined (Lisp Forms)
+>
+> | Form | Type | Current Implementation |
+> |------|------|----------------------|
+> | `(memo deps body)` | Special Form | `evalMemo()` function |
+> | `(memo/auto body)` | Special Form | `evalMemoAuto()` with tracking |
+> | `(memo/cached? 'expr)` | FFI | TypeScript ArtifactStore.has() |
+> | `(memo/clear!)` | FFI | TypeScript ArtifactStore.clear() |
+> | `(memo/clear! 'expr)` | FFI | TypeScript ArtifactStore.remove() |
+> | `(memo/stats)` | FFI | TypeScript ArtifactStore.stats() |
+> | `(memo/deps 'expr)` | FFI | TypeScript dependency lookup |
+>
+> ## Current Implementation
+>
+> **External ArtifactStore** passed to evalMemo with DependencyTracker proxy:
+> ```typescript
+> // evalMemo (lines 242-280):
+> function evalMemo(deps, body, env, world, artifacts, cont, ffi): Value {
+>   const key: ArtifactKey = { exprKey, depsFingerprint };
+>   const cached = artifacts.get(key);
+>   if (cached !== undefined) {
+>     metrics.increment('memo_hits');
+>     return applyCont(cont, cached);  // ← External cache
+>   }
+>   metrics.increment('memo_misses');
+>   const value = evalExpr(body, env, cont, ffi);  // ← Recursive eval
+>   artifacts.put(key, value, { computeTimeMs, deps });
+>   return value;
+> }
+>
+> // DependencyTracker for memo/auto (lines 336-370):
+> class DependencyTracker {
+>   wrap(world: World): World {
+>     return new Proxy(world, {  // ← Proxy wrapping
+>       get: (target, prop) => {
+>         if (prop === 'read') return (ref) => { this.deps.set(ref, ...); ... };
+>       }
+>     });
+>   }
+> }
+> ```
+>
+> ## CEKS Redesign Instructions
+>
+> ### 1. Add ArtifactStore to State:
+> ```typescript
+> type State = {
+>   control: Control;
+>   env: Ctx;
+>   store: Store;
+>   kont: Kont;
+>   artifacts: ArtifactStore;  // ← In State, not external
+>   // ...
+> };
+> ```
+>
+> ### 2. Handle (memo deps body) with MemoK frame:
+> ```typescript
+> function step(s: State): StepOutcome {
+>   if (s.control.tag === 'expr' && isMemo(s.control.expr)) {
+>     const [_, deps, body] = s.control.expr;
+>     const depsFingerprint = computeDepsFingerprint(deps, s.store);
+>     const key = { exprKey: toCanonicalKey(body), depsFingerprint };
+>
+>     // Cache hit?
+>     const cached = s.artifacts.get(key);
+>     if (cached !== undefined) {
+>       return { ...s, control: { tag: 'value', value: cached } };
+>     }
+>
+>     // Cache miss: evaluate body, push MemoK frame
+>     return {
+>       ...s,
+>       control: { tag: 'expr', expr: body },
+>       kont: [{ tag: 'MemoK', key, startTime: Date.now() }, ...s.kont],
+>     };
+>   }
+> }
+> ```
+>
+> ### 3. On MemoK frame pop, store result:
+> ```typescript
+> if (s.kont[0]?.tag === 'MemoK' && s.control.tag === 'value') {
+>   const frame = s.kont[0] as MemoKFrame;
+>   const computeTimeMs = Date.now() - frame.startTime;
+>   s.artifacts.put(frame.key, s.control.value, { computeTimeMs });
+>   return {
+>     ...s,
+>     kont: s.kont.slice(1),
+>   };
+> }
+> ```
+>
+> ### 4. Auto-tracking via effect handler (memo/auto):
+> ```typescript
+> // When entering memo/auto, install tracking handler:
+> if (isMemoAuto(s.control.expr)) {
+>   const [_, body] = s.control.expr;
+>   return {
+>     ...s,
+>     control: { tag: 'expr', expr: body },
+>     kont: [{ tag: 'MemoAutoK', trackedDeps: [], startTime: Date.now() }, ...s.kont],
+>     handlers: s.handlers.extend('world.read', (ref, k) => {
+>       // Track dependency on read
+>       const frame = findMemoAutoK(s.kont);
+>       frame.trackedDeps.push({ ref, fingerprint: s.store.fingerprint(ref) });
+>       return continueWith(s, s.store.read(ref));
+>     }),
+>   };
+> }
+>
+> // When MemoAutoK pops:
+> if (s.kont[0]?.tag === 'MemoAutoK' && s.control.tag === 'value') {
+>   const frame = s.kont[0] as MemoAutoKFrame;
+>   const depsFingerprint = computeFromTracked(frame.trackedDeps);
+>   const key = { exprKey: ..., depsFingerprint };
+>   s.artifacts.put(key, s.control.value, { deps: frame.trackedDeps });
+>   return { ...s, kont: s.kont.slice(1) };
+> }
+> ```
+>
+> ### 5. Keep FFI for inspection:
+> - `memo/cached?` - check if cached
+> - `memo/clear!` - invalidate cache
+> - `memo/stats` - hit/miss rates
+> - `memo/deps` - inspect dependencies
+>
+> ## References
+> - See Store and effect handlers in 32-6 CEKS specification
+> - See [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 26: Artifacts (Content-Addressed Memoization)
 
 ## The Problem

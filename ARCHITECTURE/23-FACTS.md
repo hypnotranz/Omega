@@ -1,3 +1,109 @@
+# ⚠️ COMPLETE REDESIGN REQUIRED
+
+> ## Primitives Defined (Lisp Forms)
+>
+> | Form | Type | Current Implementation |
+> |------|------|----------------------|
+> | `(assert 'expr)` | Special Form | `evalExpr` case (line 279) |
+> | `(assert 'expr :evidence ev)` | Special Form | `evalExpr` case (line 281) |
+> | `(assert-if-absent 'expr)` | Special Form | Alias for assert |
+> | `(fact? 'expr)` | Special Form | `evalExpr` case (line 290) |
+> | `(facts)` | Special Form | `evalExpr` case (line 297) |
+> | `(fact/get 'expr)` | FFI | TypeScript function |
+> | `(facts/count)` | FFI | TypeScript function |
+>
+> ## Current Implementation
+>
+> **Special forms** in evalExpr + **FactStore in Environment** (not State):
+> ```typescript
+> // evalExpr cases (lines 279-300):
+> if (isAssert(expr)) {
+>   const factExpr = evalExpr(expr[1], env, cont, ffi);
+>   const isNew = env.facts.assert(factExpr, evidence);  // ← env.facts, NOT State
+>   return applyCont(cont, isNew);
+> }
+>
+> // Environment holds factStore (lines 203-228):
+> class Environment {
+>   private factStore?: FactStore;  // Only at root
+>   get facts(): FactStore { ... }  // Walks to root
+> }
+> ```
+>
+> ## CEKS Redesign Instructions
+>
+> ### 1. Move FactStore to State (not Environment):
+> ```typescript
+> type State = {
+>   control: Control;
+>   env: Ctx;
+>   store: Store;
+>   kont: Kont;
+>   facts: FactStore;  // ← IN State, accessible everywhere
+>   // ...
+> };
+> ```
+>
+> ### 2. Handle (assert) in step() function:
+> ```typescript
+> function step(s: State): StepOutcome {
+>   if (s.control.tag === 'expr' && isAssert(s.control.expr)) {
+>     const [_, factExpr, ...opts] = s.control.expr;
+>     // Push AssertK frame, evaluate factExpr first
+>     return {
+>       ...s,
+>       control: { tag: 'expr', expr: factExpr },
+>       kont: [{ tag: 'AssertK', evidence: extractEvidence(opts) }, ...s.kont],
+>     };
+>   }
+>
+>   // When AssertK frame pops with value:
+>   if (s.kont[0]?.tag === 'AssertK' && s.control.tag === 'value') {
+>     const frame = s.kont[0] as AssertKFrame;
+>     const isNew = s.facts.assert(s.control.value, frame.evidence);
+>     return {
+>       ...s,
+>       control: { tag: 'value', value: isNew },
+>       kont: s.kont.slice(1),
+>     };
+>   }
+> }
+> ```
+>
+> ### 3. Subeval creates snapshot, restores on exit:
+> ```typescript
+> // When entering subeval:
+> if (isSubeval(s.control.expr)) {
+>   const factsSnapshot = s.facts.clone();
+>   return {
+>     ...s,
+>     kont: [{ tag: 'SubevalK', parentFacts: factsSnapshot }, ...s.kont],
+>     facts: new FactStore(),  // Fresh isolated store
+>   };
+> }
+>
+> // When SubevalK frame pops:
+> if (s.kont[0]?.tag === 'SubevalK' && s.control.tag === 'value') {
+>   const frame = s.kont[0] as SubevalKFrame;
+>   return {
+>     ...s,
+>     facts: frame.parentFacts,  // Restore parent facts (isolated didn't leak)
+>     kont: s.kont.slice(1),
+>   };
+> }
+> ```
+>
+> ### 4. Keep FFI for inspection helpers:
+> - `fact/get` - returns fact with metadata
+> - `facts/count` - returns count
+>
+> ## References
+> - See State structure in 32-6 CEKS specification
+> - See monotone lattice semantics
+> - See [ARCHITECTURE-REDESIGN-ASSESSMENT.md](../docs/ARCHITECTURE-REDESIGN-ASSESSMENT.md)
+
+---
+
 # 23: Facts (Monotone Epistemic State)
 
 ## The Problem with Booleans

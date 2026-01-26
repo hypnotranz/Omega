@@ -720,6 +720,78 @@ export class RuntimeImpl implements Runtime {
     }
 
     // amb.* passthrough: if not handled by a language handler or a dedicated nondet runner, it is uncaught.
+
+    // shell.op: Execute a shell command and return the output
+    // Args: (command: Str) -> Str (stdout) or throws on error
+    if (opcall.op === "shell.op") {
+      capRequire(this.profile.caps, "shell", "shell.op");
+
+      const cmdArg = opcall.args[0];
+      if (!cmdArg || cmdArg.tag !== "Str") {
+        throw new Error("shell.op: expected string command");
+      }
+
+      const command = cmdArg.s;
+
+      // Execute command using child_process
+      const { execSync } = await import("child_process");
+      try {
+        const stdout = execSync(command, {
+          encoding: "utf-8",
+          maxBuffer: 10 * 1024 * 1024, // 10MB
+          timeout: 300000, // 5 minutes
+        });
+        return opcall.resumption.invoke({ tag: "Str", s: stdout.trim() } as Val);
+      } catch (e: any) {
+        // Return error as a structured value rather than throwing
+        const stderr = e.stderr?.toString?.() ?? "";
+        const message = e.message ?? "command failed";
+        throw new Error(`shell.op failed: ${message}\n${stderr}`);
+      }
+    }
+
+    // file.read.op: Read a file and return its contents
+    // Args: (path: Str) -> Str
+    if (opcall.op === "file.read.op") {
+      capRequire(this.profile.caps, "file.read", "file.read.op");
+
+      const pathArg = opcall.args[0];
+      if (!pathArg || pathArg.tag !== "Str") {
+        throw new Error("file.read.op: expected string path");
+      }
+
+      const { readFileSync } = await import("fs");
+      try {
+        const content = readFileSync(pathArg.s, "utf-8");
+        return opcall.resumption.invoke({ tag: "Str", s: content } as Val);
+      } catch (e: any) {
+        throw new Error(`file.read.op failed: ${e.message}`);
+      }
+    }
+
+    // file.write.op: Write content to a file
+    // Args: (path: Str, content: Str) -> Unit
+    if (opcall.op === "file.write.op") {
+      capRequire(this.profile.caps, "file.write", "file.write.op");
+
+      const pathArg = opcall.args[0];
+      const contentArg = opcall.args[1];
+      if (!pathArg || pathArg.tag !== "Str") {
+        throw new Error("file.write.op: expected string path as first arg");
+      }
+      if (!contentArg || contentArg.tag !== "Str") {
+        throw new Error("file.write.op: expected string content as second arg");
+      }
+
+      const { writeFileSync } = await import("fs");
+      try {
+        writeFileSync(pathArg.s, contentArg.s, "utf-8");
+        return opcall.resumption.invoke({ tag: "Unit" } as Val);
+      } catch (e: any) {
+        throw new Error(`file.write.op failed: ${e.message}`);
+      }
+    }
+
     return "Uncaught";
   }
 }
