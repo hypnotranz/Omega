@@ -13,74 +13,682 @@ The difference is just **transport**:
 
 ---
 
-## Target Architecture
+## BLOCK DIAGRAM 1: Overall Architecture (Layered View)
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              UIs (Consumers)                             │
-├───────────────────────┬───────────────────────┬─────────────────────────┤
-│     CLI REPL          │     Web Debugger      │    Future: VSCode       │
-│   (bin/omega-repl)    │   (public/index.html) │    Extension, etc.      │
-│   readline transport  │   HTTP/WS transport   │                         │
-└───────────┬───────────┴───────────┬───────────┴───────────┬─────────────┘
-            │                       │                       │
-            ▼                       ▼                       ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         SERVICE LAYER (src/service/)                     │
-│                                                                          │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │                    IDebugService (interface)                        │ │
-│  │                                                                      │ │
-│  │  Sessions:                                                           │ │
-│  │    createSession(config) → sessionId                                 │ │
-│  │    closeSession(sessionId)                                           │ │
-│  │                                                                      │ │
-│  │  Execution:                                                          │ │
-│  │    loadCode(sessionId, code) → { success, error? }                   │ │
-│  │    step(sessionId) → StepResult                                      │ │
-│  │    continue(sessionId) → StepResult                                  │ │
-│  │    resumeWithValue(sessionId, value) → StepResult                    │ │
-│  │                                                                      │ │
-│  │  Inspection:                                                         │ │
-│  │    getSnapshot(sessionId) → MachineSnapshot                          │ │
-│  │    getBinding(sessionId, name) → SerializedValue                     │ │
-│  │    getCallStack(sessionId) → SerializedFrame[]                       │ │
-│  │    evaluate(sessionId, expr) → { value } | { error }                 │ │
-│  │                                                                      │ │
-│  │  Breakpoints:                                                        │ │
-│  │    addBreakpoint(sessionId, bp) → breakpointId                       │ │
-│  │    removeBreakpoint(sessionId, bpId)                                 │ │
-│  │    listBreakpoints(sessionId) → Breakpoint[]                         │ │
-│  │                                                                      │ │
-│  │  Time Travel:                                                        │ │
-│  │    jumpToStep(sessionId, step) → MachineSnapshot                     │ │
-│  │    getHistory(sessionId) → HistoryEntry[]                            │ │
-│  │                                                                      │ │
-│  │  OPR:                                                                │ │
-│  │    listKernels() → KernelInfo[]                                      │ │
-│  │    executeKernel(kernelId, program) → KernelResult                   │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-│  Implementation: DebugService (class)                                    │
-│    - Manages multiple DebugSession instances                             │
-│    - Implements IDebugService                                            │
-│    - Transport-agnostic (no HTTP, no readline)                           │
-└──────────────────────────────────┬──────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│                              USER INTERFACES                                    │
+│                                                                                 │
+│   ┌─────────────────────┐   ┌─────────────────────┐   ┌─────────────────────┐  │
+│   │                     │   │                     │   │                     │  │
+│   │     CLI REPL        │   │   Web Debugger      │   │  VSCode Extension   │  │
+│   │                     │   │                     │   │    (future)         │  │
+│   │   ┌───────────┐     │   │   ┌───────────┐     │   │                     │  │
+│   │   │ readline  │     │   │   │  Browser  │     │   │                     │  │
+│   │   └─────┬─────┘     │   │   └─────┬─────┘     │   │                     │  │
+│   │         │           │   │         │           │   │                     │  │
+│   └─────────┼───────────┘   └─────────┼───────────┘   └─────────────────────┘  │
+│             │                         │                                         │
+└─────────────┼─────────────────────────┼─────────────────────────────────────────┘
+              │                         │
+              │    TRANSPORT LAYER      │
+              │                         │
+┌─────────────┼─────────────────────────┼─────────────────────────────────────────┐
+│             │                         │                                         │
+│   ┌─────────▼───────────┐   ┌─────────▼───────────┐                            │
+│   │                     │   │                     │                            │
+│   │   src/repl/         │   │   src/server/       │                            │
+│   │                     │   │                     │                            │
+│   │  ReplTransport      │   │  HTTP + WebSocket   │                            │
+│   │  (stdin/stdout)     │   │  (Express + ws)     │                            │
+│   │                     │   │                     │                            │
+│   └─────────┬───────────┘   └─────────┬───────────┘                            │
+│             │                         │                                         │
+└─────────────┼─────────────────────────┼─────────────────────────────────────────┘
+              │                         │
+              └────────────┬────────────┘
+                           │
+                           │  SAME INTERFACE
+                           │
+┌──────────────────────────┼──────────────────────────────────────────────────────┐
+│                          │                                                      │
+│                          ▼                                                      │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │                     IDebugService                                       │  │
+│   │                     (THE CONTRACT)                                      │  │
+│   │                                                                         │  │
+│   │   createSession()    step()           getSnapshot()    addBreakpoint() │  │
+│   │   closeSession()     continue()       getBinding()     jumpToStep()    │  │
+│   │   loadCode()         resumeWithValue() getCallStack()  listKernels()   │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                          │                                                      │
+│                          │  SERVICE LAYER (src/service/)                       │
+│                          │                                                      │
+│   ┌──────────────────────▼──────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │                     DebugService                                        │  │
+│   │                     (implementation)                                    │  │
+│   │                                                                         │  │
+│   │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                    │  │
+│   │   │ Session #1  │  │ Session #2  │  │ Session #N  │                    │  │
+│   │   │DebugSession │  │DebugSession │  │DebugSession │                    │  │
+│   │   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘                    │  │
+│   │          │                │                │                            │  │
+│   └──────────┼────────────────┼────────────────┼────────────────────────────┘  │
+│              │                │                │                                │
+└──────────────┼────────────────┼────────────────┼────────────────────────────────┘
+               │                │                │
+               └────────────────┼────────────────┘
+                                │
+                                │  CORE ENGINE
+                                │
+┌───────────────────────────────┼─────────────────────────────────────────────────┐
+│                               │                                                 │
+│                               ▼                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │                        CESK MACHINE                                     │  │
+│   │                        (src/core/eval/)                                 │  │
+│   │                                                                         │  │
+│   │   stepOnce(state) → State | Done | Effect                              │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+│   ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────────────┐  │
+│   │                   │  │                   │  │                           │  │
+│   │   OPR Runtime     │  │  Session Record   │  │   Effects System          │  │
+│   │   (src/core/opr/) │  │  (src/core/       │  │   (src/core/effects/)     │  │
+│   │                   │  │   session/)       │  │                           │  │
+│   │  - 10 Kernels     │  │                   │  │   - Oracle                │  │
+│   │  - Validation     │  │  - Recording      │  │   - OPR Effects           │  │
+│   │  - Retry          │  │  - Replay         │  │   - File I/O              │  │
+│   │  - Receipts       │  │  - Time Travel    │  │                           │  │
+│   │                   │  │                   │  │                           │  │
+│   └───────────────────┘  └───────────────────┘  └───────────────────────────┘  │
+│                                                                                 │
+│                               CORE (src/core/)                                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## BLOCK DIAGRAM 2: CESK Machine State (What We Expose)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│                              CESK STATE                                         │
+│                         (fully observable)                                      │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │  C = CONTROL                                                            │  │
+│   │  ───────────────────────────────────────────────────────────────────    │  │
+│   │                                                                         │  │
+│   │  Either:  { tag: "Expr", e: Expression }   ← evaluating expression     │  │
+│   │      or:  { tag: "Val",  v: Value }        ← have a value              │  │
+│   │                                                                         │  │
+│   │  Example: { tag: "Expr", e: { tag: "App", fn: ..., args: [...] } }     │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │  E = ENVIRONMENT                                                        │  │
+│   │  ───────────────────────────────────────────────────────────────────    │  │
+│   │                                                                         │  │
+│   │  Chain of scopes with variable bindings:                               │  │
+│   │                                                                         │  │
+│   │  ┌─────────────────┐                                                   │  │
+│   │  │ Scope 0 (inner) │  x → 42, y → "hello"                              │  │
+│   │  └────────┬────────┘                                                   │  │
+│   │           │ parent                                                      │  │
+│   │  ┌────────▼────────┐                                                   │  │
+│   │  │ Scope 1         │  factorial → <closure>, + → <native>              │  │
+│   │  └────────┬────────┘                                                   │  │
+│   │           │ parent                                                      │  │
+│   │  ┌────────▼────────┐                                                   │  │
+│   │  │ Scope 2 (global)│  car → <native>, cdr → <native>, ...              │  │
+│   │  └─────────────────┘                                                   │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │  S = STORE (Heap)                                                       │  │
+│   │  ───────────────────────────────────────────────────────────────────    │  │
+│   │                                                                         │  │
+│   │  Address → Value mapping:                                               │  │
+│   │                                                                         │  │
+│   │  ┌─────────┬─────────────────────────────────────┐                     │  │
+│   │  │ Addr 0  │ { tag: "Vector", items: [...] }     │                     │  │
+│   │  │ Addr 1  │ { tag: "Closure", params: [...] }   │                     │  │
+│   │  │ Addr 2  │ { tag: "Str", s: "hello world" }    │                     │  │
+│   │  │ ...     │ ...                                  │                     │  │
+│   │  └─────────┴─────────────────────────────────────┘                     │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │  K = KONTINUATION (Call Stack)                                          │  │
+│   │  ───────────────────────────────────────────────────────────────────    │  │
+│   │                                                                         │  │
+│   │  Stack of frames (what to do next with the result):                    │  │
+│   │                                                                         │  │
+│   │  ┌─────────────────────────────────────────────────────────────────┐   │  │
+│   │  │ [0] KAppArg    - evaluating args, 2/3 done, fn = <closure>     │   │  │
+│   │  │ [1] KCall      - will return to caller's env                    │   │  │
+│   │  │ [2] KDefine    - will bind result to "result"                   │   │  │
+│   │  │ [3] KBegin     - 2 more expressions in sequence                 │   │  │
+│   │  │ [4] KIf        - waiting for condition, then branch             │   │  │
+│   │  └─────────────────────────────────────────────────────────────────┘   │  │
+│   │        ↑                                                                │  │
+│   │       TOP (most recent)                                                 │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │  H = HANDLERS (Effect Handler Stack)                                    │  │
+│   │  ───────────────────────────────────────────────────────────────────    │  │
+│   │                                                                         │  │
+│   │  ┌─────────────────────────────────────────────────────────────────┐   │  │
+│   │  │ [0] Handler for "file.read", "file.write"                       │   │  │
+│   │  │ [1] Handler for "oracle.apply"                                  │   │  │
+│   │  │ [2] Handler for "opr.step.*"                                    │   │  │
+│   │  └─────────────────────────────────────────────────────────────────┘   │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## BLOCK DIAGRAM 3: Data Flow (Step Execution)
+
+```
+                          ┌──────────────────┐
+                          │   User Action    │
+                          │  (click Step)    │
+                          └────────┬─────────┘
                                    │
                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           CORE (src/core/)                               │
-│                                                                          │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────┐   │
-│  │   CESK Machine   │  │   OPR Runtime    │  │   Session Recording  │   │
-│  │   (eval/)        │  │   (opr/)         │  │   (session/)         │   │
-│  │                  │  │                  │  │                      │   │
-│  │  - State         │  │  - Kernels       │  │  - SessionWriter     │   │
-│  │  - stepOnce()    │  │  - Runtime       │  │  - SessionReader     │   │
-│  │  - Frames        │  │  - Adapters      │  │  - JumpController    │   │
-│  │  - Values        │  │  - Validation    │  │                      │   │
-│  └──────────────────┘  └──────────────────┘  └──────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  TRANSPORT (HTTP or readline)                                                │
+│                                                                              │
+│    POST /session/abc/step                                                    │
+│    or                                                                        │
+│    > :step                                                                   │
+│                                                                              │
+└──────────────────────────────────┬───────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  SERVICE: IDebugService.step("abc")                                          │
+│                                                                              │
+│    1. Get session "abc" from sessions map                                    │
+│    2. Call session.step()                                                    │
+│                                                                              │
+└──────────────────────────────────┬───────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  DEBUG SESSION                                                               │
+│                                                                              │
+│    1. Call stepOnce(this.state)                                              │
+│    2. Check breakpoints                                                      │
+│    3. Record to history                                                      │
+│    4. Serialize state → MachineSnapshot                                      │
+│                                                                              │
+└──────────────────────────────────┬───────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  CESK MACHINE: stepOnce(state)                                               │
+│                                                                              │
+│    Input:  State { control, env, store, kont, handlers }                     │
+│                                                                              │
+│    Output: StepOutcome                                                       │
+│            ├─ { tag: "State", state: newState }     → keep stepping         │
+│            ├─ { tag: "Done",  value: Val }          → execution complete    │
+│            └─ { tag: "Op",    opcall: OpCall }      → effect encountered    │
+│                                                                              │
+└──────────────────────────────────┬───────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  STATE SERIALIZER                                                            │
+│                                                                              │
+│    State (TypeScript)  ──────►  MachineSnapshot (JSON)                       │
+│                                                                              │
+│    ┌─────────────────┐          ┌─────────────────────────────────────────┐ │
+│    │ control: {      │          │ {                                       │ │
+│    │   tag: "Expr",  │    ►     │   "snapshotId": "snap_42",              │ │
+│    │   e: {...}      │          │   "step": 15,                           │ │
+│    │ }               │          │   "control": {                          │ │
+│    │ env: Ctx        │          │     "tag": "Expr",                      │ │
+│    │ store: COWStore │          │     "exprType": "App",                  │ │
+│    │ kont: Frame[]   │          │     "summary": "(factorial 5)"          │ │
+│    │ handlers: [...]│          │   },                                    │ │
+│    └─────────────────┘          │   "callStack": [...],                   │ │
+│                                 │   "environment": [...],                 │ │
+│                                 │   "status": "paused"                    │ │
+│                                 │ }                                       │ │
+│                                 └─────────────────────────────────────────┘ │
+│                                                                              │
+└──────────────────────────────────┬───────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  RESPONSE                                                                    │
+│                                                                              │
+│    {                                                                         │
+│      "snapshot": { ... MachineSnapshot ... },                                │
+│      "outcome": "stepped"                                                    │
+│    }                                                                         │
+│                                                                              │
+│    Also broadcast via WebSocket to all connected clients                     │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## BLOCK DIAGRAM 4: Package Boundaries
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│  bin/                           ENTRY POINTS (executables)                      │
+│  ────                                                                           │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                 │
+│  │ omega-repl.ts   │  │ omega-server.ts │  │omega-debugger.ts│                 │
+│  │                 │  │                 │  │  (deprecated)   │                 │
+│  │ uses: src/repl/ │  │uses: src/server/│  │                 │                 │
+│  └────────┬────────┘  └────────┬────────┘  └─────────────────┘                 │
+│           │                    │                                                │
+└───────────┼────────────────────┼────────────────────────────────────────────────┘
+            │                    │
+            ▼                    ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                                                                               │
+│  src/repl/                      src/server/                                   │
+│  ─────────                      ───────────                                   │
+│                                                                               │
+│  PUBLIC EXPORTS:                PUBLIC EXPORTS:                               │
+│  ┌─────────────────────┐       ┌─────────────────────────┐                   │
+│  │ • startRepl()       │       │ • DebugServer           │                   │
+│  │ • ReplConfig        │       │ • startDebugServer()    │                   │
+│  └──────────┬──────────┘       └───────────┬─────────────┘                   │
+│             │                              │                                  │
+│             │    BOTH IMPORT FROM:         │                                  │
+│             │                              │                                  │
+│             └──────────────┬───────────────┘                                  │
+│                            │                                                  │
+└────────────────────────────┼──────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│  src/service/                   THE SERVICE LAYER                               │
+│  ────────────                   (transport-agnostic)                            │
+│                                                                                 │
+│  ┌───────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                           │ │
+│  │  PUBLIC EXPORTS (index.ts):                                               │ │
+│  │                                                                           │ │
+│  │  TYPES:                                                                   │ │
+│  │    • IDebugService          (the contract)                                │ │
+│  │    • MachineSnapshot        (state at a point in time)                    │ │
+│  │    • StepResult             (result of stepping)                          │ │
+│  │    • Breakpoint             (breakpoint config)                           │ │
+│  │    • SerializedValue        (JSON-safe value)                             │ │
+│  │    • SerializedFrame        (JSON-safe stack frame)                       │ │
+│  │    • SessionConfig          (session options)                             │ │
+│  │                                                                           │ │
+│  │  IMPLEMENTATION:                                                          │ │
+│  │    • DebugService           (implements IDebugService)                    │ │
+│  │    • createDebugService()   (factory function)                            │ │
+│  │                                                                           │ │
+│  └───────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+│  INTERNAL (not exported):                                                       │
+│    • DebugSession              (per-session wrapper)                           │
+│    • stateSerializer           (State → JSON)                                  │
+│                                                                                 │
+│                            │                                                    │
+└────────────────────────────┼────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│  src/core/                      THE ENGINE                                      │
+│  ─────────                      (no changes needed)                             │
+│                                                                                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                 │
+│  │                 │  │                 │  │                 │                 │
+│  │  src/core/eval/ │  │  src/core/opr/  │  │src/core/session/│                 │
+│  │                 │  │                 │  │                 │                 │
+│  │  • State        │  │  • OprRuntime   │  │  • Writer       │                 │
+│  │  • stepOnce()   │  │  • Kernels      │  │  • Reader       │                 │
+│  │  • Frame        │  │  • Adapters     │  │  • Jump         │                 │
+│  │  • Val          │  │  • Bridge       │  │                 │                 │
+│  │                 │  │                 │  │                 │                 │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘                 │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## BLOCK DIAGRAM 5: OPR Integration (Full Detail)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│                         OPR (OMEGA PROTOCOL RUNTIME)                            │
+│                                                                                 │
+│   The OPR is a first-class effect system that provides:                         │
+│   - Typed protocol steps (kernels)                                              │
+│   - Validation & retry logic                                                    │
+│   - Deterministic receipts                                                      │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+                           OPR ARCHITECTURE
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│   USER CODE (Omega Lisp)                                                        │
+│   ──────────────────────                                                        │
+│                                                                                 │
+│   (opr-step "validate-json" data-expr)                                          │
+│   (opr-step "llm-chat" prompt-expr)                                             │
+│   (opr-step "parse-sexp" text-expr)                                             │
+│                                                                                 │
+│             │                                                                   │
+│             │  evaluates to effect                                              │
+│             ▼                                                                   │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │                    EFFECT: { op: "opr.step", args: [...] }              │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│             │                                                                   │
+│             │  caught by effect handler                                         │
+│             ▼                                                                   │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │                   OPR EFFECT HANDLER                                    │  │
+│   │                   (src/core/opr/handler.ts)                             │  │
+│   │                                                                         │  │
+│   │   1. Extract kernel name and program from args                          │  │
+│   │   2. Look up kernel in registry                                         │  │
+│   │   3. Call kernel.execute(program)                                       │  │
+│   │   4. Convert result back to Val                                         │  │
+│   │   5. Resume continuation with result                                    │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│             │                                                                   │
+│             │  dispatches to                                                    │
+│             ▼                                                                   │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+                           OPR KERNEL REGISTRY
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│   OprRuntime (src/core/opr/runtime.ts)                                          │
+│   ──────────────────────────────────────                                        │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │   kernelRegistry: Map<string, OprKernel>                                │  │
+│   │                                                                         │  │
+│   │   ┌─────────────────────────────────────────────────────────────────┐   │  │
+│   │   │                                                                 │   │  │
+│   │   │   THE 10 KERNELS                                                │   │  │
+│   │   │                                                                 │   │  │
+│   │   │   ┌───────────────┬────────────────────────────────────────┐   │   │  │
+│   │   │   │ Kernel        │ Purpose                                │   │   │  │
+│   │   │   ├───────────────┼────────────────────────────────────────┤   │   │  │
+│   │   │   │ validate-json │ Validate JSON against schema           │   │   │  │
+│   │   │   │ parse-json    │ Parse JSON string to value             │   │   │  │
+│   │   │   │ stringify-json│ Convert value to JSON string           │   │   │  │
+│   │   │   │ parse-sexp    │ Parse S-expression to AST              │   │   │  │
+│   │   │   │ emit-sexp     │ Convert AST to S-expression string     │   │   │  │
+│   │   │   │ llm-chat      │ Call LLM with prompt                   │   │   │  │
+│   │   │   │ llm-embed     │ Generate embeddings                    │   │   │  │
+│   │   │   │ transform     │ Apply transformation pipeline          │   │   │  │
+│   │   │   │ hash          │ Compute cryptographic hash             │   │   │  │
+│   │   │   │ verify        │ Verify signature/hash                  │   │   │  │
+│   │   │   └───────────────┴────────────────────────────────────────┘   │   │  │
+│   │   │                                                                 │   │  │
+│   │   └─────────────────────────────────────────────────────────────────┘   │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+│   KERNEL INTERFACE:                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │   interface OprKernel {                                                 │  │
+│   │     id: string;              // "validate-json"                         │  │
+│   │     op: string;              // "opr.step.validate-json"                │  │
+│   │     inputSchema: ZodSchema;  // validation for input                    │  │
+│   │     outputSchema: ZodSchema; // validation for output                   │  │
+│   │     execute(program: unknown): Promise<OprResult>;                      │  │
+│   │   }                                                                     │  │
+│   │                                                                         │  │
+│   │   interface OprResult {                                                 │  │
+│   │     success: boolean;                                                   │  │
+│   │     value?: unknown;         // on success                              │  │
+│   │     error?: string;          // on failure                              │  │
+│   │     receipt: OprReceipt;     // always present                          │  │
+│   │   }                                                                     │  │
+│   │                                                                         │  │
+│   │   interface OprReceipt {                                                │  │
+│   │     kernelId: string;                                                   │  │
+│   │     inputHash: string;                                                  │  │
+│   │     outputHash: string;                                                 │  │
+│   │     timestamp: string;                                                  │  │
+│   │     duration: number;                                                   │  │
+│   │   }                                                                     │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+                           OPR ↔ CESK INTEGRATION
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│   When CESK machine encounters OPR effect:                                      │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │   STEP 1: Effect Raised                                                 │  │
+│   │   ─────────────────────                                                 │  │
+│   │                                                                         │  │
+│   │   stepOnce(state) returns:                                              │  │
+│   │   {                                                                     │  │
+│   │     tag: "Op",                                                          │  │
+│   │     opcall: {                                                           │  │
+│   │       op: "opr.step",                                                   │  │
+│   │       args: ["validate-json", { data: {...}, schema: {...} }],          │  │
+│   │       resumption: <Resumption>     ← HOW TO CONTINUE                    │  │
+│   │     },                                                                  │  │
+│   │     state: <State at effect>                                            │  │
+│   │   }                                                                     │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│             │                                                                   │
+│             │  debugger pauses, shows "effect pending"                          │
+│             │  user can inspect state, then choose to resume                    │
+│             ▼                                                                   │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │   STEP 2: Effect Handled (automatic or manual)                          │  │
+│   │   ───────────────────────────────────────────                           │  │
+│   │                                                                         │  │
+│   │   // Execute the kernel                                                 │  │
+│   │   const result = await runtime.execute("validate-json", program);       │  │
+│   │                                                                         │  │
+│   │   // Convert result to Val                                              │  │
+│   │   const valResult = jsonToVal(result);                                  │  │
+│   │                                                                         │  │
+│   │   // Resume the continuation with the result                            │  │
+│   │   const newState = resumption.invoke(valResult);                        │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│             │                                                                   │
+│             │  CESK machine continues from new state                            │
+│             ▼                                                                   │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │   STEP 3: Execution Continues                                           │  │
+│   │   ─────────────────────────                                             │  │
+│   │                                                                         │  │
+│   │   state.control = { tag: "Val", v: result-value }                       │  │
+│   │   state.kont = ... (continuation processes result)                      │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+                           OPR IN DEBUGGER UI
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│   IDebugService OPR Methods                                                     │
+│   ─────────────────────────                                                     │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │   // List available kernels (for UI dropdown/autocomplete)              │  │
+│   │   listKernels(): Promise<Array<{                                        │  │
+│   │     id: string;           // "validate-json"                            │  │
+│   │     op: string;           // "opr.step.validate-json"                   │  │
+│   │     description: string;  // "Validate JSON against schema"             │  │
+│   │     inputSchema: object;  // JSON Schema for input                      │  │
+│   │     outputSchema: object; // JSON Schema for output                     │  │
+│   │   }>>                                                                   │  │
+│   │                                                                         │  │
+│   │   // Execute kernel directly (bypass CESK, useful for testing)          │  │
+│   │   executeKernel(kernelId: string, program: unknown): Promise<{          │  │
+│   │     success: boolean;                                                   │  │
+│   │     value?: unknown;                                                    │  │
+│   │     error?: string;                                                     │  │
+│   │     receipt: OprReceipt;                                                │  │
+│   │   }>                                                                    │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+│   Debugger UI Features for OPR                                                  │
+│   ──────────────────────────                                                    │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                         │  │
+│   │   1. EFFECT INSPECTION                                                  │  │
+│   │      When status = "effect" and pendingEffect.op starts with "opr.":   │  │
+│   │      - Show kernel name                                                 │  │
+│   │      - Show input program (formatted)                                   │  │
+│   │      - Show input/output schemas                                        │  │
+│   │                                                                         │  │
+│   │   2. MANUAL RESUME                                                      │  │
+│   │      - User can provide custom return value                             │  │
+│   │      - Useful for testing/mocking LLM responses                         │  │
+│   │                                                                         │  │
+│   │   3. KERNEL PLAYGROUND                                                  │  │
+│   │      - Test kernels independently via executeKernel()                   │  │
+│   │      - Try different inputs, see outputs                                │  │
+│   │                                                                         │  │
+│   │   4. RECEIPT INSPECTION                                                 │  │
+│   │      - View execution receipts                                          │  │
+│   │      - Verify deterministic replay                                      │  │
+│   │                                                                         │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+                           OPR DATA FLOW (COMPLETE)
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│   ┌──────────────────────────────────────────────────────────────────────────┐ │
+│   │                                                                          │ │
+│   │   (opr-step "llm-chat" (quote ((prompt "Hello, world!"))))               │ │
+│   │                                                                          │ │
+│   └────────────────────────────────────┬─────────────────────────────────────┘ │
+│                                        │                                       │
+│                                        ▼                                       │
+│   ┌──────────────────────────────────────────────────────────────────────────┐ │
+│   │  CESK MACHINE                                                            │ │
+│   │                                                                          │ │
+│   │  control: { tag: "Expr", e: { tag: "Effect", op: "opr.step", ... } }     │ │
+│   │                            │                                             │ │
+│   │                            ▼                                             │ │
+│   │  stepOnce() → { tag: "Op", opcall: { op: "opr.step", ... } }             │ │
+│   │                                                                          │ │
+│   └────────────────────────────────────┬─────────────────────────────────────┘ │
+│                                        │                                       │
+│                                        ▼                                       │
+│   ┌──────────────────────────────────────────────────────────────────────────┐ │
+│   │  DEBUG SESSION (paused at effect)                                        │ │
+│   │                                                                          │ │
+│   │  snapshot.status = "effect"                                              │ │
+│   │  snapshot.pendingEffect = {                                              │ │
+│   │    op: "opr.step",                                                       │ │
+│   │    args: [                                                               │ │
+│   │      { tag: "Str", summary: "\"llm-chat\"" },                             │ │
+│   │      { tag: "List", summary: "((prompt ...))" }                          │ │
+│   │    ]                                                                     │ │
+│   │  }                                                                       │ │
+│   │                                                                          │ │
+│   └────────────────────────────────────┬─────────────────────────────────────┘ │
+│                                        │                                       │
+│         ┌──────────────────────────────┴─────────────────────┐                 │
+│         │                                                    │                 │
+│         ▼                                                    ▼                 │
+│   ┌─────────────────────────────┐  ┌─────────────────────────────────────────┐ │
+│   │  OPTION A: Auto-resume      │  │  OPTION B: Manual resume                │ │
+│   │                             │  │                                         │ │
+│   │  session.continue()         │  │  session.resumeWithValue({              │ │
+│   │  → executes kernel          │  │    response: "Mock LLM response"        │ │
+│   │  → resumes with result      │  │  })                                     │ │
+│   │                             │  │  → resumes with provided value          │ │
+│   └─────────────────────────────┘  └─────────────────────────────────────────┘ │
+│                                        │                                       │
+│                                        ▼                                       │
+│   ┌──────────────────────────────────────────────────────────────────────────┐ │
+│   │  OPR RUNTIME                                                             │ │
+│   │                                                                          │ │
+│   │  1. Lookup kernel: kernelRegistry.get("llm-chat")                        │ │
+│   │  2. Validate input: inputSchema.parse(program)                           │ │
+│   │  3. Execute: kernel.execute({ prompt: "Hello, world!" })                 │ │
+│   │  4. Validate output: outputSchema.parse(result)                          │ │
+│   │  5. Generate receipt: { kernelId, inputHash, outputHash, ... }           │ │
+│   │  6. Return: { success: true, value: {...}, receipt: {...} }              │ │
+│   │                                                                          │ │
+│   └────────────────────────────────────┬─────────────────────────────────────┘ │
+│                                        │                                       │
+│                                        ▼                                       │
+│   ┌──────────────────────────────────────────────────────────────────────────┐ │
+│   │  BRIDGE (src/core/opr/bridge.ts)                                         │ │
+│   │                                                                          │ │
+│   │  jsonToVal(result) → Val                                                 │ │
+│   │                                                                          │ │
+│   │  { success: true, value: "Hello!" } → { tag: "Map", entries: [...] }     │ │
+│   │                                                                          │ │
+│   └────────────────────────────────────┬─────────────────────────────────────┘ │
+│                                        │                                       │
+│                                        ▼                                       │
+│   ┌──────────────────────────────────────────────────────────────────────────┐ │
+│   │  CESK MACHINE (resumed)                                                  │ │
+│   │                                                                          │ │
+│   │  control: { tag: "Val", v: { tag: "Map", ... } }                         │ │
+│   │  → continues with result value                                           │ │
+│   │                                                                          │ │
+│   └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
