@@ -1,8 +1,10 @@
 # 021a3-retry: Retry Logic
 
+> **Output**: `src/core/opr/retry.ts`
+
 > **Scope**: Implement retry decision logic and counterexample repair prompts
 > **Architecture Reference**: [021-OPR-RUNTIME.md](021-OPR-RUNTIME.md)
-> **Depends on**: 021-types
+> **Depends on**: job-021-types (Layer 1)
 
 ## Overview
 
@@ -11,6 +13,13 @@ Build repair prompts from validation violations to guide LLM toward correct outp
 ## File to Create
 
 `src/core/opr/retry.ts`
+
+## Imports Contract
+
+What this task needs from its dependencies:
+
+### From 021-types (./types):
+- ValidationViolation
 
 ## Implementation
 
@@ -91,8 +100,7 @@ export function formatViolationsForDisplay(violations: ValidationViolation[]): s
 }
 ```
 
-## Exports
-
+## Exports Contract
 ```typescript
 export {
   buildRepairPrompt,
@@ -115,3 +123,9 @@ export {
 - RY2: shouldRetry returns false for KERNEL_MISMATCH
 - RY3: shouldRetry returns true for MISSING_FIELD
 - RY4: formatViolationsForDisplay formats for console
+
+## Verification
+
+```bash
+npx tsc --noEmit src/core/opr/retry.ts
+```

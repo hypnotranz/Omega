@@ -1,8 +1,34 @@
 # 021g1-unit-tests: Unit Tests
 
+> **Output**: `test/opr/unit/`
+
 > **Scope**: Implement unit tests for validate, receipts, retry, hash modules
 > **Architecture Reference**: [021-OPR-RUNTIME.md](021-OPR-RUNTIME.md#test-suites)
-> **Depends on**: 021a1-validate, 021a2-receipts, 021a3-retry, 021a4-hash
+> **Depends on**: job-021a1-validate, job-021a2-receipts, job-021a3-retry, job-021a4-hash (Layer 4)
+
+## Imports Contract
+
+What this task needs from its dependencies:
+
+### From job-021a1-validate (src/core/opr/validate):
+- validateKernelOutput - main validation function
+- checkProgressInvariants - progress invariant checking
+
+### From job-021a2-receipts (src/core/opr/receipts):
+- createReceipt - receipt creation
+- verifyReceiptChain - chain verification
+- InMemoryReceiptStore - in-memory store
+- ReceiptBuilder - fluent receipt builder
+
+### From job-021a3-retry (src/core/opr/retry):
+- buildRepairPrompt - builds repair prompt from violations
+- shouldRetry - determines if violations are retryable
+
+### From job-021a4-hash (src/core/opr/hash):
+- sha256Of - hash function
+- canonicalJson - canonical JSON stringification
+- verifyHash - hash verification
+- newId - ID generation
 
 ## Overview
 
@@ -18,7 +44,11 @@ test/opr/unit/
 └── hash.spec.ts
 ```
 
-## validate.spec.ts
+## Implementation
+
+Create the test files in `test/opr/unit/` with the following content:
+
+### validate.spec.ts
 
 ```typescript
 import { describe, it, expect } from 'vitest';
@@ -468,6 +498,16 @@ describe('shouldRetry', () => {
 });
 ```
 
+## Exports Contract
+
+What this task provides for downstream tasks:
+
+### Functions/Types:
+- (document exports here)
+
+### Used by:
+- (downstream tasks that import from this)
+
 ## Acceptance Criteria
 
 1. [ ] All validate tests pass (V1-V10)
@@ -476,3 +516,9 @@ describe('shouldRetry', () => {
 4. [ ] All retry tests pass (RY1-RY4)
 5. [ ] `npm test test/opr/unit/` passes with 100% of tests
 6. [ ] Coverage > 90% for validate, receipts, hash, retry modules
+
+## Verification
+
+```bash
+npx vitest run test/opr/unit/
+```

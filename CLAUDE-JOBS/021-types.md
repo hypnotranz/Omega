@@ -1,5 +1,8 @@
 # 021-types: ΩPR Type System
 
+> **Output**: `src/core/opr/types.ts`
+> **Depends on**: None (Layer 0)
+
 > **Scope**: Define all TypeScript interfaces and types for the ΩPR Runtime
 > **Architecture Reference**: [021-OPR-RUNTIME.md](021-OPR-RUNTIME.md)
 
@@ -11,7 +14,9 @@ This job creates the foundational type system for ΩPR. All other jobs depend on
 
 `src/core/opr/types.ts`
 
-## Type Definitions
+## Implementation
+
+Create `src/core/opr/types.ts` with the following type definitions:
 
 ### 1. Step Result Discriminated Union
 
@@ -255,6 +260,16 @@ interface ProgressInvariants {
 }
 ```
 
+## Exports Contract
+
+What this task provides for downstream tasks:
+
+### Functions/Types:
+- (document exports here)
+
+### Used by:
+- (downstream tasks that import from this)
+
 ## Acceptance Criteria
 
 1. [ ] File `src/core/opr/types.ts` exists with all types defined above
@@ -280,4 +295,10 @@ const badHash: Hash = 'md5:abc123';  // Should error
 // Verify error inheritance
 const err = new OprValidationError('test', []);
 console.log(err instanceof OprError); // true
+```
+
+## Verification
+
+```bash
+npx tsc --noEmit src/core/opr/types.ts
 ```

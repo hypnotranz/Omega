@@ -1,8 +1,10 @@
 # 021d1-adapter-interface: OPR Adapter Interface
 
+> **Output**: `src/core/opr/adapters/types.ts`
+
 > **Scope**: Define OprLLMAdapter interface and base types for LLM adapters
 > **Architecture Reference**: [021-OPR-RUNTIME.md](021-OPR-RUNTIME.md)
-> **Depends on**: 021-types
+> **Depends on**: job-021-types (Layer 1)
 
 ## Overview
 
@@ -11,6 +13,13 @@ Common interface for LLM adapters used by OprRuntime. Adapters handle the actual
 ## File to Create
 
 `src/core/opr/adapters/types.ts`
+
+## Imports Contract
+
+What this task needs from its dependencies:
+
+### From 021-prompt (../../../frameir/prompt):
+- PromptDoc
 
 ## Implementation
 
@@ -188,8 +197,7 @@ export abstract class BaseOprAdapter implements OprLLMAdapter {
 }
 ```
 
-## Exports
-
+## Exports Contract
 ```typescript
 export {
   type OprLLMAdapter,
@@ -228,3 +236,9 @@ export { AnthropicOprAdapter } from './anthropic';
 - AI1: BaseOprAdapter.formatUserContent includes repair context
 - AI2: estimateCost calculates reasonable values
 - AI3: getLastUsage returns zeros when no calls made
+
+## Verification
+
+```bash
+npx tsc --noEmit src/core/opr/adapters/types.ts
+```

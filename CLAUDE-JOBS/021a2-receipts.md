@@ -1,8 +1,10 @@
 # 021a2-receipts: Receipt Chain
 
+> **Output**: `src/core/opr/receipts.ts`
+
 > **Scope**: Implement receipt creation, chain verification, and storage
 > **Architecture Reference**: [021-OPR-RUNTIME.md](021-OPR-RUNTIME.md#receipt-chain-audit-trail)
-> **Depends on**: 021-types
+> **Depends on**: job-021-types (Layer 1)
 
 ## Overview
 
@@ -11,6 +13,22 @@ Hash-linked receipt chain for audit trail of all LLM attempts. Each receipt link
 ## File to Create
 
 `src/core/opr/receipts.ts`
+
+## Imports Contract
+
+What this task needs from its dependencies:
+
+### From 021-types (./types):
+- OprReceipt
+- Hash
+- HashRef
+- ReceiptId
+- ReceiptStatus
+- Diagnostics
+
+### From 021-hash (./hash):
+- sha256Of
+- newId
 
 ## Implementation
 
@@ -251,8 +269,7 @@ export class ReceiptBuilder {
 }
 ```
 
-## Exports
-
+## Exports Contract
 ```typescript
 export {
   createReceipt,
@@ -285,3 +302,9 @@ export {
 - R6: first receipt must have null prev_hash
 - R7: InMemoryReceiptStore indexes by kernel
 - R8: ReceiptBuilder chains receipts correctly
+
+## Verification
+
+```bash
+npx tsc --noEmit src/core/opr/receipts.ts
+```

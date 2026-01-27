@@ -1,8 +1,10 @@
 # 021a4-hash: Hash Utilities
 
+> **Output**: `src/core/opr/hash.ts`
+
 > **Scope**: Implement sha256Of(), canonicalJson(), content-addressed hashing
 > **Architecture Reference**: [021-OPR-RUNTIME.md](021-OPR-RUNTIME.md)
-> **Depends on**: 021-types
+> **Depends on**: job-021-types (Layer 1)
 
 ## Overview
 
@@ -11,6 +13,17 @@ Deterministic hashing for content-addressed receipts and audit trail integrity.
 ## File to Create
 
 `src/core/opr/hash.ts`
+
+## Imports Contract
+
+What this task needs from its dependencies:
+
+### From 021-types (./types):
+- Hash
+
+### From 021-crypto (crypto):
+- createHash
+- randomBytes
 
 ## Implementation
 
@@ -80,8 +93,7 @@ export function hexToHash(hex: string): Hash {
 }
 ```
 
-## Exports
-
+## Exports Contract
 ```typescript
 export {
   sha256Of,
@@ -110,3 +122,9 @@ export {
 - H4: verifyHash returns true for matching content
 - H5: verifyHash returns false for tampered content
 - H6: newId generates different IDs on each call
+
+## Verification
+
+```bash
+npx tsc --noEmit src/core/opr/hash.ts
+```

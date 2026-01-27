@@ -1,283 +1,52 @@
-# ΩPR Runtime - Beads Feature Definitions
-# This file defines the dependency graph for parallel execution
-#
-# Import with: python ../codesmith/cli.py import CLAUDE-JOBS/021-features.yaml
-# Run with:    python ../codesmith/cli.py run --max-workers 4
+# ΩPR Runtime - Clean Feature Definitions (only tasks with .md files)
+# All 9 tasks have corresponding requirements documents
 
 features:
-  # ─────────────────────────────────────────────────────────────────
-  # LAYER 0: Foundation (no dependencies)
-  # ─────────────────────────────────────────────────────────────────
-
+  # Layer 0: Foundation
   - id: "021-types"
     title: "ΩPR Type System"
-    description: "TypeScript interfaces for OPR: KernelOutput, OprStepResult, receipts, validation"
     job_file: "021-types.md"
     depends_on: []
-    estimated_hours: 2
-    tags: ["foundation", "types"]
 
-  # ─────────────────────────────────────────────────────────────────
-  # LAYER 1: Core Modules (depend only on types)
-  # All can run in PARALLEL
-  # ─────────────────────────────────────────────────────────────────
-
+  # Layer 1: Core Modules (all depend on types)
   - id: "021a1-validate"
     title: "Validation Pipeline"
-    description: "validateKernelOutput() with structured violations for repair prompts"
     job_file: "021a1-validate.md"
     depends_on: ["021-types"]
-    estimated_hours: 2
-    tags: ["core", "validation"]
 
   - id: "021a2-receipts"
     title: "Receipt Chain"
-    description: "createReceipt(), verifyReceiptChain(), InMemoryReceiptStore"
     job_file: "021a2-receipts.md"
     depends_on: ["021-types"]
-    estimated_hours: 2
-    tags: ["core", "audit"]
 
   - id: "021a3-retry"
     title: "Retry Logic"
-    description: "defaultRetryDecider(), buildRepairPrompt() with counterexamples"
     job_file: "021a3-retry.md"
     depends_on: ["021-types"]
-    estimated_hours: 1.5
-    tags: ["core", "retry"]
 
   - id: "021a4-hash"
     title: "Hash Utilities"
-    description: "sha256Of(), canonicalJson(), content-addressed hashing"
     job_file: "021a4-hash.md"
     depends_on: ["021-types"]
-    estimated_hours: 1
-    tags: ["core", "crypto"]
-
-  - id: "021a5-json-extract"
-    title: "JSON Extraction"
-    description: "extractJsonObject() from LLM response with markdown handling"
-    job_file: "021a5-json-extract.md"
-    depends_on: ["021-types"]
-    estimated_hours: 1
-    tags: ["core", "parsing"]
-
-  # ─────────────────────────────────────────────────────────────────
-  # LAYER 2: Kernel Prompts (depend on types)
-  # All can run in PARALLEL
-  # ─────────────────────────────────────────────────────────────────
-
-  - id: "021b1-prompt-compile"
-    title: "Prompt Compilation"
-    description: "PromptDoc to OpenAI/Anthropic message format compilation"
-    job_file: "021b1-prompt-compile.md"
-    depends_on: ["021-types"]
-    estimated_hours: 1.5
-    tags: ["prompts", "compile"]
-
-  - id: "021b2-logic-kernel"
-    title: "Logic Kernel Prompt"
-    description: "Datalog-style inference kernel with @semantic callbacks"
-    job_file: "021b2-logic-kernel.md"
-    depends_on: ["021-types"]
-    estimated_hours: 2.5
-    tags: ["prompts", "kernel"]
-
-  - id: "021b3-analyze-kernel"
-    title: "Analyze Kernel Prompt"
-    description: "Code review kernel with artifact.get callbacks"
-    job_file: "021b3-analyze-kernel.md"
-    depends_on: ["021-types"]
-    estimated_hours: 2
-    tags: ["prompts", "kernel"]
-
-  - id: "021b4-semantic-kernel"
-    title: "Semantic Kernel Prompt"
-    description: "Boolean judgment kernel for semantic predicates"
-    job_file: "021b4-semantic-kernel.md"
-    depends_on: ["021-types"]
-    estimated_hours: 1.5
-    tags: ["prompts", "kernel"]
-
-  - id: "021b5-prompt-registry"
-    title: "Kernel Prompt Registry"
-    description: "KernelPromptRegistry for loading and managing kernels"
-    job_file: "021b5-prompt-registry.md"
-    depends_on: ["021b1-prompt-compile", "021b2-logic-kernel", "021b3-analyze-kernel", "021b4-semantic-kernel"]
-    estimated_hours: 1
-    tags: ["prompts", "registry"]
-
-  # ─────────────────────────────────────────────────────────────────
-  # LAYER 3: Runtime Core (depends on Layer 1 & Layer 2)
-  # Sequential: 021c1 first, then 021c2
-  # ─────────────────────────────────────────────────────────────────
-
-  - id: "021c1-runtime"
-    title: "OPR Runtime"
-    description: "OprRuntime class with execute loop, validation, retry, receipts"
-    job_file: "021c1-runtime.md"
-    depends_on: ["021a1-validate", "021a2-receipts", "021a3-retry", "021a4-hash", "021a5-json-extract"]
-    estimated_hours: 4
-    tags: ["runtime", "core"]
-
-  - id: "021c2-callbacks"
-    title: "Callback Execution"
-    description: "Callback protocol: eval_lisp, artifact.get, facts.query handlers"
-    job_file: "021c2-callbacks.md"
-    depends_on: ["021c1-runtime"]
-    estimated_hours: 3
-    tags: ["runtime", "callbacks"]
-
-  # ─────────────────────────────────────────────────────────────────
-  # LAYER 4: LLM Adapters (can develop against interface contract)
-  # All can run in PARALLEL
-  # ─────────────────────────────────────────────────────────────────
 
   - id: "021d1-adapter-interface"
     title: "OPR Adapter Interface"
-    description: "OprLLMAdapter interface and base types"
     job_file: "021d1-adapter-interface.md"
     depends_on: ["021-types"]
-    estimated_hours: 1
-    tags: ["adapter", "interface"]
 
-  - id: "021d2-scripted-adapter"
-    title: "Scripted Adapter"
-    description: "ScriptedOprAdapter for deterministic testing"
-    job_file: "021d2-scripted-adapter.md"
-    depends_on: ["021d1-adapter-interface"]
-    estimated_hours: 1.5
-    tags: ["adapter", "testing"]
-
-  - id: "021d3-openai-adapter"
-    title: "OpenAI Adapter"
-    description: "OpenAIOprAdapter for real OpenAI API calls"
-    job_file: "021d3-openai-adapter.md"
-    depends_on: ["021d1-adapter-interface", "021b5-prompt-registry"]
-    estimated_hours: 2
-    tags: ["adapter", "openai"]
-
-  - id: "021d4-anthropic-adapter"
-    title: "Anthropic Adapter"
-    description: "AnthropicOprAdapter for Claude API calls"
-    job_file: "021d4-anthropic-adapter.md"
-    depends_on: ["021d1-adapter-interface", "021b5-prompt-registry"]
-    estimated_hours: 2
-    tags: ["adapter", "anthropic"]
-
-  # ─────────────────────────────────────────────────────────────────
-  # LAYER 5: CEKS Integration (depends on runtime)
-  # Sequential: 021e1 then 021e2
-  # ─────────────────────────────────────────────────────────────────
-
-  - id: "021e1-ceks-frame"
-    title: "OprStepK Frame"
-    description: "CEKS continuation frame for OPR callback handling"
-    job_file: "021e1-ceks-frame.md"
-    depends_on: ["021c2-callbacks"]
-    estimated_hours: 2.5
-    tags: ["ceks", "frame"]
-
-  - id: "021e2-effect-handlers"
-    title: "Effect Handlers"
-    description: "opr.logic.step, opr.analyze.step handlers in runtimeImpl.ts"
-    job_file: "021e2-effect-handlers.md"
-    depends_on: ["021e1-ceks-frame", "021d2-scripted-adapter"]
-    estimated_hours: 3
-    tags: ["ceks", "effects"]
-
-  # ─────────────────────────────────────────────────────────────────
-  # LAYER 6: REPL & Session (depends on CEKS integration)
-  # 021f1 and 021f2 can run in PARALLEL
-  # ─────────────────────────────────────────────────────────────────
-
-  - id: "021f1-repl-commands"
-    title: "REPL Commands"
-    description: ":opr-kernels, :opr-step, :opr-run, :opr-receipts, :opr-verify"
-    job_file: "021f1-repl-commands.md"
-    depends_on: ["021e2-effect-handlers", "021b5-prompt-registry"]
-    estimated_hours: 2.5
-    tags: ["repl", "commands"]
-
-  - id: "021f2-session-integration"
-    title: "Session Integration"
-    description: "Session.oprState, receipt tracking, statistics"
-    job_file: "021f2-session-integration.md"
-    depends_on: ["021e2-effect-handlers"]
-    estimated_hours: 2
-    tags: ["session", "state"]
-
-  # ─────────────────────────────────────────────────────────────────
-  # LAYER 7: Testing (depends on all implementation)
-  # 021g1-g3 can run in PARALLEL
-  # ─────────────────────────────────────────────────────────────────
+  # Layer 2: Runtime & Tests
+  - id: "021c1-runtime"
+    title: "OPR Runtime"
+    job_file: "021c1-runtime.md"
+    depends_on: ["021a1-validate", "021a2-receipts", "021a3-retry", "021a4-hash"]
 
   - id: "021g1-unit-tests"
     title: "Unit Tests"
-    description: "validate.spec.ts, receipts.spec.ts, retry.spec.ts, hash.spec.ts"
     job_file: "021g1-unit-tests.md"
     depends_on: ["021a1-validate", "021a2-receipts", "021a3-retry", "021a4-hash"]
-    estimated_hours: 2
-    tags: ["testing", "unit"]
 
-  - id: "021g2-integration-tests"
-    title: "Integration Tests"
-    description: "logic-kernel.spec.ts, callbacks.spec.ts with ScriptedAdapter"
-    job_file: "021g2-integration-tests.md"
-    depends_on: ["021e2-effect-handlers", "021d2-scripted-adapter"]
-    estimated_hours: 3
-    tags: ["testing", "integration"]
-
-  - id: "021g3-e2e-tests"
-    title: "E2E Tests"
-    description: "datalog-e2e.spec.ts, review-e2e.spec.ts from Lisp"
-    job_file: "021g3-e2e-tests.md"
-    depends_on: ["021f1-repl-commands", "021f2-session-integration"]
-    estimated_hours: 3
-    tags: ["testing", "e2e"]
-
-  # ─────────────────────────────────────────────────────────────────
-  # LAYER 8: Demos & Live Tests (final layer)
-  # All can run in PARALLEL
-  # ─────────────────────────────────────────────────────────────────
-
-  - id: "021h1-demos"
-    title: "Demo Scripts"
-    description: "datalog-repl-demo.lisp, code-review-demo.lisp, refactor-safety-demo.lisp"
-    job_file: "021h1-demos.md"
-    depends_on: ["021g3-e2e-tests"]
-    estimated_hours: 2
-    tags: ["demo", "docs"]
-
-  - id: "021h2-live-tests"
-    title: "Live LLM Tests"
-    description: "openai-opr.spec.ts, anthropic-opr.spec.ts with real API"
-    job_file: "021h2-live-tests.md"
-    depends_on: ["021d3-openai-adapter", "021d4-anthropic-adapter", "021g3-e2e-tests"]
-    estimated_hours: 2
-    tags: ["testing", "live"]
-
-# ─────────────────────────────────────────────────────────────────
-# Execution Summary
-# ─────────────────────────────────────────────────────────────────
-#
-# Total estimated hours: ~50 hours
-# Total beads: 25
-#
-# Dependency Layers (for parallel execution):
-#
-# Layer 0 (1 bead):   021-types
-# Layer 1 (5 beads):  021a1, 021a2, 021a3, 021a4, 021a5  ← All parallel
-# Layer 2 (5 beads):  021b1, 021b2, 021b3, 021b4, 021d1  ← All parallel
-# Layer 3 (2 beads):  021b5, 021c1                       ← Sequential
-# Layer 4 (4 beads):  021c2, 021d2, 021d3, 021d4         ← Mostly parallel
-# Layer 5 (2 beads):  021e1, 021e2                       ← Sequential
-# Layer 6 (2 beads):  021f1, 021f2                       ← Parallel
-# Layer 7 (3 beads):  021g1, 021g2, 021g3                ← Parallel
-# Layer 8 (2 beads):  021h1, 021h2                       ← Parallel
-#
-# Critical Path: 021-types → 021a1 → 021c1 → 021c2 → 021e1 → 021e2 → 021f1 → 021g3 → 021h1
-# Critical Path Time: ~24 hours
-#
-# With 4 parallel agents, estimated wall-clock time: ~15 hours
-# ─────────────────────────────────────────────────────────────────
+  # Layer 3: REPL Commands
+  - id: "021f1-repl-commands"
+    title: "REPL Commands"
+    job_file: "021f1-repl-commands.md"
+    depends_on: ["021c1-runtime"]

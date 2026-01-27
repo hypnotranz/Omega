@@ -1,8 +1,10 @@
 # 021f1-repl-commands: REPL Commands
 
+> **Output**: `src/repl/commands/opr.ts`
+
 > **Scope**: Implement REPL commands for ΩPR: :opr-kernels, :opr-step, :opr-run, :opr-receipts, :opr-verify
 > **Architecture Reference**: [021-OPR-RUNTIME.md](021-OPR-RUNTIME.md#repl-integration)
-> **Depends on**: 021e2-effect-handlers, 021b5-prompt-registry
+> **Depends on**: job-021e2-effect-handlers, job-021b5-prompt-registry (Layer 2)
 
 ## Overview
 
@@ -11,6 +13,29 @@ Add REPL commands for interactive ΩPR usage. Users can list kernels, execute st
 ## File to Create
 
 `src/repl/commands/opr.ts`
+
+## Imports Contract
+
+What this task needs from its dependencies:
+
+### From 021-types (../types):
+- ReplState
+- ReplCommand
+
+### From 021-registry (../../core/opr/prompts/registry):
+- kernelRegistry
+
+### From 021-receipts (../../core/opr/receipts):
+- verifyReceiptChain
+
+### From 021-runtime (../../core/opr/runtime):
+- OprRuntime
+
+### From 021-promises (fs/promises):
+- readFile
+
+### From 021-opr (./commands/opr):
+- oprCommands
 
 ## Implementation
 
@@ -369,8 +394,7 @@ for (const [name, command] of Object.entries(oprCommands)) {
 // Update :help to include OPR commands
 ```
 
-## Exports
-
+## Exports Contract
 ```typescript
 export { oprCommands };
 ```
@@ -392,3 +416,9 @@ export { oprCommands };
 - REPL2: `:opr-step opr.logic.v1 (hash :rules "..." :facts '(...))` executes
 - REPL3: `:opr-receipts` shows receipts after step execution
 - REPL4: `:opr-verify` reports valid chain after successful steps
+
+## Verification
+
+```bash
+npx tsc --noEmit src/repl/commands/opr.ts
+```

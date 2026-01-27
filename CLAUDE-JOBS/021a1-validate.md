@@ -1,8 +1,10 @@
 # 021a1-validate: Validation Pipeline
 
+> **Output**: `src/core/opr/validate.ts`
+
 > **Scope**: Implement validateKernelOutput() with structured violations for repair prompts
 > **Architecture Reference**: [021-OPR-RUNTIME.md](021-OPR-RUNTIME.md#validation-pipeline)
-> **Depends on**: 021-types
+> **Depends on**: job-021-types (Layer 1)
 
 ## Overview
 
@@ -11,6 +13,19 @@ Single-parse validation that returns structured violations usable for counterexa
 ## File to Create
 
 `src/core/opr/validate.ts`
+
+## Imports Contract
+
+What this task needs from its dependencies:
+
+### From 021-types (./types):
+- ValidationResult
+- ValidationViolation
+- ViolationCode
+
+### From 021-types (./types):
+- KernelState
+- ProgressInvariants
 
 ## Implementation
 
@@ -235,8 +250,7 @@ export function checkProgressInvariants(
 }
 ```
 
-## Exports
-
+## Exports Contract
 ```typescript
 export {
   validateKernelOutput,
@@ -265,3 +279,9 @@ export {
 - V6: validates effects array elements
 - V7: enforces iteration monotonicity
 - V8: enforces derived facts monotonicity
+
+## Verification
+
+```bash
+npx tsc --noEmit src/core/opr/validate.ts
+```

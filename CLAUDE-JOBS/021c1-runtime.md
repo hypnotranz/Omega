@@ -1,8 +1,10 @@
 # 021c1-runtime: OPR Runtime
 
+> **Output**: `src/core/opr/runtime.ts`
+
 > **Scope**: Implement OprRuntime class with execute loop, validation, retry, receipts
 > **Architecture Reference**: [021-OPR-RUNTIME.md](021-OPR-RUNTIME.md#budget-integration)
-> **Depends on**: 021a1-validate, 021a2-receipts, 021a3-retry, 021a4-hash, 021a5-json-extract
+> **Depends on**: job-021a1-validate, job-021a2-receipts, job-021a3-retry, job-021a4-hash, job-021a5-json-extract (Layer 5)
 
 ## Overview
 
@@ -17,6 +19,42 @@ The OprRuntime class is the main execution engine. It:
 ## File to Create
 
 `src/core/opr/runtime.ts`
+
+## Imports Contract
+
+What this task needs from its dependencies:
+
+### From 021-types (./types):
+- OprStepResult
+- OprStepResultOk
+- KernelOutput
+- OprBudgetConfig
+- ProgressInvariants
+- OprCapabilities
+- ValidationViolation
+- Hash
+
+### From 021-types (./adapters/types):
+- OprLLMAdapter
+
+### From 021-receipts (./receipts):
+- ReceiptStore
+
+### From 021-prompts (./prompts):
+- KernelPromptConfig
+
+### From 021-validate (./validate):
+- validateKernelOutput
+- checkProgressInvariants
+
+### From 021-retry (./retry):
+- buildRepairPrompt
+
+### From 021-jsonExtract (./jsonExtract):
+- extractJsonObject
+
+### From 021-hash (./hash):
+- sha256Of
 
 ## Implementation
 
@@ -317,8 +355,7 @@ export interface OprRequest {
 }
 ```
 
-## Exports
-
+## Exports Contract
 ```typescript
 export {
   OprRuntime,
@@ -354,3 +391,9 @@ export {
 - RT6: runToFixpoint terminates on done=true
 - RT7: runToFixpoint respects max iterations
 - RT8: receipt chain generated for multi-attempt step
+
+## Verification
+
+```bash
+npx tsc --noEmit src/core/opr/runtime.ts
+```

@@ -1,5 +1,8 @@
 # 021: ΩPR Runtime Integration
 
+> **Output**: `src/path/to/file.ts`
+> **Depends on**: None (Layer 0)
+
 > **Scope**: Implement the ΩPR (Omega Prompt Runtime) as a first-class subsystem in OmegaLLM, providing contract enforcement, structured retry, and audit trail for LLM-as-interpreter calls.
 
 ## Reference Implementation
@@ -2090,6 +2093,56 @@ export async function handleLogin(req: Request) {
 
 ---
 
+## Imports Contract
+
+What this task needs from its dependencies:
+
+### From 021-prompt (../../frameir/prompt):
+- PromptDoc
+- PSystem
+- PUser
+- PFewShot
+- PAttachSchema
+
+### From 021-logic-kernel (./logic-kernel):
+- LOGIC_KERNEL
+
+### From 021-analyze-kernel (./analyze-kernel):
+- ANALYZE_KERNEL
+
+### From 021-semantic-kernel (./semantic-kernel):
+- SEMANTIC_KERNEL
+
+### From 021-vitest (vitest):
+- describe
+- it
+- expect
+
+### From 021-validate (../../../src/core/opr/validate):
+- validateKernelOutput
+
+### From 021-runtime (../../../src/core/opr/runtime):
+- OprRuntime
+
+### From 021-scripted (../../../src/core/opr/adapters/scripted):
+- ScriptedOprAdapter
+
+### From 021-receipts (../../../src/core/opr/receipts):
+- InMemoryReceiptStore
+
+### From 021-logic-kernel (../../../src/core/opr/prompts/logic-kernel):
+- LOGIC_KERNEL
+
+### From 021-omegaHarness (../../helpers/omegaHarness):
+- evalOmega
+
+### From 021-openai (../../../src/core/opr/adapters/openai):
+- OpenAIOprAdapter
+
+### From 021-config (../../live/config):
+- runLive
+- OPENAI_API_KEY
+
 ## Implementation Tasks
 
 ### Phase 1: Core TypeScript Port
@@ -2282,3 +2335,9 @@ The existing specs are for **host Lisp runtime**. ΩPR is specifically for **LLM
 - [ARCHITECTURE/25-BUDGET.md](../ARCHITECTURE/25-BUDGET.md) - Budget infrastructure
 - [ARCHITECTURE/28-SESSION.md](../ARCHITECTURE/28-SESSION.md) - Session/audit infrastructure
 - [frameir/prompt.ts](../src/frameir/prompt.ts) - PromptIR types
+
+## Verification
+
+```bash
+npx tsc --noEmit src/path/to/file.ts
+```
