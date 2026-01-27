@@ -456,6 +456,7 @@ describe("validateKernelOutput", () => {
         code: "INVALID_VALUE",
       });
       expect(violations[0].message).toContain("must increase");
+      expect(violations[0].message).toContain("->");
     });
 
     it("rejects same iteration value", () => {
@@ -534,6 +535,7 @@ describe("validateKernelOutput", () => {
         code: "INVALID_VALUE",
       });
       expect(violations[0].message).toContain("monotonically");
+      expect(violations[0].message).toContain("->");
     });
 
     it("accepts same derived facts size", () => {
