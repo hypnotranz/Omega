@@ -43,6 +43,13 @@ import type { SessionIndex } from "../src/core/session";
 import { buildNativeRegistry } from "../src/core/session/nativeRegistry";
 import { buildSolverRegistry } from "../src/core/session/solverRegistry";
 
+// OPR imports
+import { OprRuntime } from "../src/core/opr/runtime";
+import { InMemoryReceiptStore as OprReceiptStore } from "../src/core/opr/receipts";
+import { OpenAIOprAdapter } from "../src/core/opr/adapters/openai";
+import { AnthropicOprAdapter } from "../src/core/opr/adapters/anthropic";
+import { listKernels, getKernel } from "../src/core/opr/kernels";
+
 // ─────────────────────────────────────────────────────────────────
 // LLM Integration
 // ─────────────────────────────────────────────────────────────────
@@ -2079,6 +2086,12 @@ async function processReplCommand(
     log("  :trace <id>        — show trace summary");
     log("  :trace <id> -v     — show full trace (prompts, responses, tool calls)");
     log("");
+    log("  OPR (Omega Protocol Runtime):");
+    log("  :opr-list          — list available OPR kernels");
+    log("  :opr-run <kernel> <json> — run kernel with program JSON");
+    log("  :opr-receipts      — show OPR receipt chain for current session");
+    log("  :opr-verify [file] — verify OPR receipt chain integrity");
+    log("");
     log("  :quit, :q      — exit REPL");
     return { replState, output: output.join("\n"), shouldExit };
   }
@@ -2659,6 +2672,181 @@ async function processReplCommand(
     }
 
     log(formatTrace(trace, verbose));
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  // OPR Commands
+  if (trimmed === ":opr-list") {
+    log("\nAvailable OPR Kernels:");
+    log("======================");
+    for (const id of listKernels()) {
+      const kernel = getKernel(id);
+      if (kernel) {
+        log(`  ${id} (op: ${kernel.op})`);
+      }
+    }
+    log("\nUse :opr-run <kernel-id> <program-json> to execute a kernel.");
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  if (trimmed.startsWith(":opr-run ")) {
+    const args = trimmed.slice(9).trim();
+    const spaceIdx = args.indexOf(" ");
+    if (spaceIdx === -1) {
+      log("Usage: :opr-run <kernel-id> <program-json>");
+      log("Example: :opr-run opr.classify.v1 {\"item\":\"error at line 42\",\"categories\":[\"bug\",\"feature\"]}");
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+
+    const kernelId = args.slice(0, spaceIdx);
+    const programJson = args.slice(spaceIdx + 1).trim();
+
+    const kernel = getKernel(kernelId);
+    if (!kernel) {
+      log(`Unknown kernel: ${kernelId}`);
+      log("Use :opr-list to see available kernels.");
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+
+    let program: unknown;
+    try {
+      program = JSON.parse(programJson);
+    } catch (e: any) {
+      log(`Invalid JSON: ${e.message}`);
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+
+    // Get API key
+    const openaiKey = process.env.OPENAI_API_KEY;
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+
+    if (!openaiKey && !anthropicKey) {
+      log("No API key found. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.");
+      return { replState, output: output.join("\n"), shouldExit };
+    }
+
+    // Create adapter
+    const adapter = openaiKey
+      ? new OpenAIOprAdapter({ apiKey: openaiKey, model: "gpt-4o-mini" })
+      : new AnthropicOprAdapter({ apiKey: anthropicKey!, model: "claude-sonnet-4-20250514" });
+
+    const receipts = new OprReceiptStore();
+    const runtime = new OprRuntime({
+      kernel,
+      adapter,
+      receipts,
+      budget: { maxAttempts: 3 },
+    });
+
+    log(`\nRunning kernel: ${kernelId}`);
+    log(`Program: ${JSON.stringify(program, null, 2)}`);
+    log("\nCalling LLM...\n");
+
+    try {
+      const result = await runtime.step({ program, state: null });
+
+      if (result.tag === "ok") {
+        log("SUCCESS!");
+        log(`\nResult: ${JSON.stringify(result.output.result, null, 2)}`);
+        if (result.output.next_state) {
+          log(`\nNext State: ${JSON.stringify(result.output.next_state, null, 2)}`);
+        }
+        if (result.output.effects && result.output.effects.length > 0) {
+          log(`\nEffects: ${JSON.stringify(result.output.effects, null, 2)}`);
+        }
+        log(`\nAttempts: ${result.attempts}`);
+      } else {
+        log(`FAILED: ${result.tag}`);
+        if ("error" in result) {
+          log(`Error: ${(result.error as Error).message}`);
+        }
+      }
+
+      // Store receipts in session
+      (replState as any).oprReceipts = [
+        ...((replState as any).oprReceipts || []),
+        ...result.receipts,
+      ];
+      log(`\nReceipts: ${result.receipts.length} generated (use :opr-receipts to view)`);
+    } catch (e: any) {
+      log(`Error running kernel: ${e.message}`);
+    }
+
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  if (trimmed === ":opr-receipts") {
+    const oprReceipts = (replState as any).oprReceipts;
+    if (!oprReceipts || oprReceipts.length === 0) {
+      log("No OPR receipts in current session.");
+    } else {
+      log("\nOPR Receipt Chain:");
+      log("==================");
+      for (let i = 0; i < oprReceipts.length; i++) {
+        const r = oprReceipts[i];
+        const statusIcon = r.status === 'OK' ? '[OK]' : '[X]';
+        log(`${i + 1}. ${statusIcon} ${r.status} - ${r.kernel_id}:${r.op}`);
+        log(`     Attempt: ${r.attempt}  Created: ${r.created_at}`);
+        if (r.errors && r.errors.length > 0) {
+          log(`     Errors: ${r.errors[0]}`);
+        }
+      }
+    }
+    return { replState, output: output.join("\n"), shouldExit };
+  }
+
+  if (trimmed === ":opr-verify" || trimmed.startsWith(":opr-verify ")) {
+    const arg = trimmed.slice(12).trim();
+    let receipts: any[];
+
+    if (arg) {
+      // Load from file
+      try {
+        const content = fs.readFileSync(arg, 'utf-8');
+        receipts = JSON.parse(content);
+      } catch (e: any) {
+        log(`Error loading receipt file: ${e.message}`);
+        return { replState, output: output.join("\n"), shouldExit };
+      }
+    } else {
+      receipts = (replState as any).oprReceipts || [];
+      if (receipts.length === 0) {
+        log("No OPR receipts in session. Provide a file path to verify.");
+        return { replState, output: output.join("\n"), shouldExit };
+      }
+    }
+
+    // Simple chain verification
+    let valid = true;
+    let brokenAt = -1;
+    let error = "";
+
+    if (receipts.length > 0 && receipts[0].prev_receipt_hash !== null) {
+      valid = false;
+      brokenAt = 0;
+      error = "First receipt should have null prev_receipt_hash";
+    } else {
+      for (let i = 1; i < receipts.length; i++) {
+        if (receipts[i].prev_receipt_hash !== receipts[i - 1].receipt_hash) {
+          valid = false;
+          brokenAt = i;
+          error = "Chain link broken";
+          break;
+        }
+      }
+    }
+
+    if (valid) {
+      log(`\nReceipt chain is VALID`);
+      log(`  ${receipts.length} receipts verified`);
+      if (receipts.length > 0) {
+        log(`  Chain hash: ${receipts[receipts.length - 1].receipt_hash}`);
+      }
+    } else {
+      log(`\nReceipt chain is BROKEN`);
+      log(`  Broken at index: ${brokenAt}`);
+      log(`  Error: ${error}`);
+    }
     return { replState, output: output.join("\n"), shouldExit };
   }
 
