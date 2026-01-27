@@ -969,3 +969,109 @@ The REPL and Web UI are just different views into the same capability. By extrac
 - Reusable across multiple UIs
 - Clear contracts for future clients (VSCode extension, etc.)
 - Separation of concerns
+
+---
+
+## CRITICAL ISSUES FOUND (Must Fix Before Proceeding)
+
+**Assessment Date:** 2026-01-27
+
+### Issue 1: Code Does Not Compile
+
+Current `src/server/` files have TypeScript errors:
+
+```
+src/server/debugSession.ts(100,31): error TS2339: Property 'fork' does not exist on type 'COWStore'.
+src/server/debugSession.ts(375,56): error TS2345: Argument of type '"idle"' is not assignable...
+src/server/debugSession.ts(424,33): error TS2339: Property 'fork' does not exist on type 'Store'.
+src/server/debugSession.ts(479,40): error TS2339: Property 'fork' does not exist on type 'COWStore'.
+src/server/stateSerializer.ts(229-233): Expression types not in union (Bind, ConditionHandlerBind, etc.)
+src/server/stateSerializer.ts(248): Property 'source' does not exist on type 'Expr'.
+src/server/stateSerializer.ts(446-448): RuntimeBudget property names wrong.
+```
+
+**Root Causes:**
+1. `COWStore` has `snapshot()` not `fork()` - wrong method name
+2. `MachineSnapshot.status` union doesn't include `'idle'`
+3. AST `Expr` type doesn't include all expression tags the serializer tries to handle
+4. `Expr` doesn't have a `source` property
+5. `RuntimeBudget` has different property names than assumed
+
+**Fix Required:** Update debugSession.ts and stateSerializer.ts to match actual core types.
+
+---
+
+### Issue 2: Wrong Import Path for Primitives
+
+```typescript
+// debugSession.ts line 23 - WRONG:
+import { installPrims } from '../../test/helpers/prims';
+
+// SHOULD BE:
+import { installPrims } from '../core/prims';
+```
+
+Production code should not import from test helpers.
+
+---
+
+### Issue 3: OPR Adapter Incomplete
+
+```
+src/core/opr/adapters/transportAdapter.ts(9,45): error TS2305: Module '"./types"' has no exported member 'OprUsageInfo'.
+src/core/opr/adapters/transportAdapter.ts(12,14): error TS2420: Class 'TransportOprAdapter' incorrectly implements interface 'OprLLMAdapter'.
+  Property 'supportsStreaming' is missing...
+```
+
+The OPR adapter types are out of sync.
+
+---
+
+## REVISED ACHIEVABILITY ASSESSMENT
+
+| Phase | Status | Risk | Effort | Notes |
+|-------|--------|------|--------|-------|
+| **Phase 0: Fix Compilation** | ❌ BLOCKING | HIGH | 2-4h | Must fix before anything else works |
+| **Phase 1: Service Layer** | ⚠️ Ready | LOW | 1-2h | Just file reorganization after Phase 0 |
+| **Phase 2: Test Server** | ⚠️ Blocked | MEDIUM | 2-3h | Need integration tests |
+| **Phase 3: REPL Refactor** | ⚠️ Blocked | MEDIUM | 4-8h | Preserve existing functionality |
+| **Phase 4: Web UI** | ⚠️ Blocked | LOW | 4-8h | Standard HTML/JS work |
+
+### What's Actually Working
+
+| Component | Status | Confidence |
+|-----------|--------|------------|
+| CESK Machine (`stepOnce`) | ✅ Works | HIGH - Core engine, tested |
+| OPR Runtime (`OprRuntime`) | ✅ Works | HIGH - Full implementation |
+| OPR Kernels Registry | ✅ Exists | MEDIUM - `src/core/opr/kernels/` |
+| OPR Bridge (`jsonToVal`) | ✅ Works | HIGH - Used in production |
+| Primitives (`installPrims`) | ✅ Works | HIGH - `src/core/prims.ts` |
+| State Types | ✅ Works | HIGH - Core types |
+| Debug Session | ❌ Broken | LOW - Compilation errors |
+| State Serializer | ❌ Broken | LOW - Type mismatches |
+| Debug Server | ❌ Broken | LOW - Dependencies broken |
+
+### Recommended Fix Order
+
+```
+1. Fix COWStore.fork() → COWStore.snapshot()  (3 locations)
+2. Fix installPrims import path
+3. Fix MachineSnapshot.status to include 'idle'
+4. Fix stateSerializer expression handling (guard against unknown tags)
+5. Remove source property access (or make optional)
+6. Fix RuntimeBudget property access
+7. Run tsc --noEmit to verify clean compile
+8. Add basic smoke test
+```
+
+---
+
+## HONEST SUMMARY
+
+**The architecture is sound. The implementation has bugs.**
+
+The CESK machine, OPR runtime, and core infrastructure all work. The debug server layer was written against assumed APIs that don't match the actual codebase.
+
+**Time to working server:** ~4-6 hours of bug fixing + testing.
+
+**Recommendation:** Fix compilation errors FIRST, then do a basic smoke test before any reorganization. Moving broken code into new directories accomplishes nothing.
