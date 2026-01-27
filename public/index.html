@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmegaLLM Debugger</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">&#937;</span>
+        <span class="logo-text">OmegaLLM Debugger</span>
+      </div>
+      <div class="session-info">
+        <span class="session-label">Session:</span>
+        <span id="session-id" class="session-value">Not connected</span>
+        <span id="status-badge" class="status-badge status-idle">idle</span>
+      </div>
+      <div class="header-actions">
+        <button id="btn-new-session" class="btn btn-primary">New Session</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Left Panel: Code Editor -->
+      <section class="panel panel-editor">
+        <div class="panel-header">
+          <h2>Code</h2>
+          <div class="panel-actions">
+            <button id="btn-load" class="btn btn-sm">Load</button>
+            <button id="btn-clear" class="btn btn-sm btn-ghost">Clear</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <textarea id="code-editor" class="code-editor" placeholder="; Enter Omega Lisp code here...
+; Example:
+(define factorial
+  (lambda (n)
+    (if (<= n 1)
+        1
+        (* n (factorial (- n 1))))))
+
+(factorial 5)"></textarea>
+        </div>
+      </section>
+
+      <!-- Center Panel: Controls + State -->
+      <section class="panel panel-state">
+        <!-- Control Bar -->
+        <div class="control-bar">
+          <div class="control-group">
+            <button id="btn-step" class="btn btn-control" title="Step (F10)">
+              <span class="icon">&#9654;</span> Step
+            </button>
+            <button id="btn-step-10" class="btn btn-control" title="Step 10">
+              <span class="icon">&#9654;&#9654;</span> x10
+            </button>
+            <button id="btn-continue" class="btn btn-control btn-green" title="Continue (F5)">
+              <span class="icon">&#9654;</span> Continue
+            </button>
+            <button id="btn-run" class="btn btn-control btn-blue" title="Run to completion">
+              <span class="icon">&#9654;&#9654;</span> Run
+            </button>
+            <button id="btn-pause" class="btn btn-control btn-orange" title="Pause">
+              <span class="icon">&#10074;&#10074;</span> Pause
+            </button>
+          </div>
+          <div class="step-counter">
+            Step: <span id="step-count">0</span>
+          </div>
+        </div>
+
+        <!-- Control Register -->
+        <div class="panel-section">
+          <h3 class="section-title">
+            <span class="section-icon">C</span> Control
+          </h3>
+          <div id="control-display" class="control-display">
+            <div class="control-empty">No code loaded</div>
+          </div>
+        </div>
+
+        <!-- Call Stack -->
+        <div class="panel-section">
+          <h3 class="section-title">
+            <span class="section-icon">K</span> Continuation Stack
+          </h3>
+          <div id="call-stack" class="call-stack">
+            <div class="stack-empty">Empty</div>
+          </div>
+        </div>
+
+        <!-- Effect Handler Stack -->
+        <div class="panel-section">
+          <h3 class="section-title">
+            <span class="section-icon">H</span> Handlers
+          </h3>
+          <div id="handlers" class="handlers">
+            <div class="handlers-empty">No handlers</div>
+          </div>
+        </div>
+
+        <!-- Pending Effect -->
+        <div id="effect-panel" class="panel-section effect-panel hidden">
+          <h3 class="section-title section-title-effect">
+            <span class="section-icon">!</span> Pending Effect
+          </h3>
+          <div id="pending-effect" class="pending-effect"></div>
+          <div class="effect-actions">
+            <input type="text" id="resume-value" class="resume-input" placeholder='Resume value (JSON, e.g. "result")'>
+            <button id="btn-resume" class="btn btn-green">Resume</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Panel: Environment + History -->
+      <section class="panel panel-env">
+        <!-- Environment -->
+        <div class="panel-section">
+          <h3 class="section-title">
+            <span class="section-icon">E</span> Environment
+          </h3>
+          <div id="environment" class="environment">
+            <div class="env-empty">No bindings</div>
+          </div>
+        </div>
+
+        <!-- History / Time Travel -->
+        <div class="panel-section">
+          <h3 class="section-title">
+            <span class="section-icon">T</span> History
+          </h3>
+          <div id="history" class="history">
+            <div class="history-empty">No history</div>
+          </div>
+        </div>
+
+        <!-- Result -->
+        <div id="result-panel" class="panel-section result-panel hidden">
+          <h3 class="section-title section-title-success">
+            <span class="section-icon">&#10003;</span> Result
+          </h3>
+          <div id="result" class="result"></div>
+        </div>
+
+        <!-- Error -->
+        <div id="error-panel" class="panel-section error-panel hidden">
+          <h3 class="section-title section-title-error">
+            <span class="section-icon">&#10005;</span> Error
+          </h3>
+          <div id="error" class="error"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-left">
+        <span class="keyboard-hint">F10: Step</span>
+        <span class="keyboard-hint">F5: Continue</span>
+        <span class="keyboard-hint">F8: Run</span>
+      </div>
+      <div class="footer-right">
+        <span id="ws-status" class="ws-status ws-disconnected">Disconnected</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

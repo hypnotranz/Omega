@@ -20,7 +20,7 @@ import type {
 import { serializeState, serializeValue, serializeFrame, extractBindings } from './stateSerializer';
 import { COWStore } from '../core/eval/store';
 import { stepOnce } from '../core/eval/machineStep';
-import { installPrims } from '../../test/helpers/prims';
+import { installPrims } from '../core/prims';
 import { compileTextToExpr } from '../core/pipeline/compileText';
 import type { State, StepOutcome, Frame } from '../core/eval/machine';
 import type { Val } from '../core/eval/values';
@@ -97,7 +97,7 @@ export class DebugSession {
       this.state = {
         control: { tag: 'Expr', e: expr },
         env: this.baseEnv,
-        store: this.baseStore.fork(),
+        store: this.baseStore.snapshot(),
         kont: [],
         handlers: [],
       };
@@ -372,15 +372,17 @@ export class DebugSession {
       options.error = this._error;
     }
 
-    return serializeState(this.state, this._stepCount, this._status, options);
+    const status = this._status === 'idle' ? 'paused' : this._status;
+    return serializeState(this.state, this._stepCount, status, options);
   }
 
   getBinding(name: string): SerializedValue | null {
     if (!this.state) return null;
 
     try {
-      const val = envGet(this.state.env, name);
-      if (val) {
+      const addr = envGet(this.state.env, name);
+      if (addr !== undefined) {
+        const val = this.state.store.read(addr);
         return serializeValue(val, 4);
       }
     } catch {
@@ -421,7 +423,7 @@ export class DebugSession {
       const tempState: State = {
         control: { tag: 'Expr', e: compiled },
         env: this.state.env,
-        store: this.state.store.fork(),
+        store: this.state.store.snapshot(),
         kont: [],
         handlers: [],
       };
@@ -476,7 +478,7 @@ export class DebugSession {
     return {
       control: state.control,
       env: state.env,
-      store: (state.store as COWStore).fork(),
+      store: (state.store as COWStore).snapshot(),
       kont: [...state.kont],
       handlers: [...state.handlers],
       profile: state.profile,

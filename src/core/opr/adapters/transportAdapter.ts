@@ -6,12 +6,12 @@
  * the same underlying transport.
  */
 
-import type { OprLLMAdapter, OprLLMRequest, OprUsageInfo } from './types';
+import type { OprLLMAdapter, OprLLMRequest, LLMUsage } from './types';
 import type { LLMTransport, LLMMessage } from '../../llm/transport';
 
 export class TransportOprAdapter implements OprLLMAdapter {
   private transport: LLMTransport;
-  private lastUsage?: OprUsageInfo;
+  private lastUsage?: LLMUsage;
 
   constructor(transport: LLMTransport) {
     this.transport = transport;
@@ -61,7 +61,11 @@ export class TransportOprAdapter implements OprLLMAdapter {
     return this.transport.getModel();
   }
 
-  getLastUsage(): OprUsageInfo | undefined {
+  getLastUsage(): LLMUsage | undefined {
     return this.lastUsage;
+  }
+
+  supportsStreaming(): boolean {
+    return false;
   }
 }

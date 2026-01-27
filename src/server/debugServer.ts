@@ -9,6 +9,12 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ESM __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import type {
   IDebugService,
   SessionConfig,
@@ -83,8 +89,8 @@ export class DebugServer implements IDebugService {
     app.post('/session', async (req, res) => {
       try {
         const config: SessionConfig = req.body ?? {};
-        const id = await this.createSession(config);
-        res.json({ id });
+        const sessionId = await this.createSession(config);
+        res.json({ sessionId });
       } catch (e) {
         res.status(500).json({ error: (e as Error).message });
       }
@@ -282,7 +288,13 @@ export class DebugServer implements IDebugService {
     });
 
     // ─── Static Files (Web UI) ───
-    app.use(express.static('public'));
+    const publicPath = path.join(__dirname, '../../public');
+    app.use(express.static(publicPath));
+
+    // Serve index.html for root
+    app.get('/', (_req, res) => {
+      res.sendFile(path.join(publicPath, 'index.html'));
+    });
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -609,7 +621,12 @@ export class DebugServer implements IDebugService {
 // CLI ENTRY POINT
 // ─────────────────────────────────────────────────────────────
 
-if (require.main === module) {
+// ESM-compatible main module detection
+const isMain = import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}` ||
+               process.argv[1]?.endsWith('debugServer.ts') ||
+               process.argv[1]?.endsWith('debugServer.js');
+
+if (isMain) {
   const port = parseInt(process.env.DEBUG_PORT ?? '3456', 10);
   const server = new DebugServer(port);
   server.start();

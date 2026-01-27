@@ -226,11 +226,6 @@ function exprSummary(e: Expr): string {
     case 'Quote': return `'...`;
     case 'Match': return `(match ...)`;
     case 'OracleLambda': return `(oracle-lambda ...)`;
-    case 'Bind': return `(>>= ...)`;
-    case 'ConditionHandlerBind': return `(handler-bind ...)`;
-    case 'RestartCase': return `(restart-case ...)`;
-    case 'Signal': return `(signal ...)`;
-    case 'InvokeRestart': return `(invoke-restart ...)`;
     default: return `<${(e as any).tag}>`;
   }
 }
@@ -241,11 +236,11 @@ function exprSummary(e: Expr): string {
 
 export function serializeControl(ctrl: Control): SerializedControl {
   if (ctrl.tag === 'Expr') {
+    // Note: Expr type doesn't have source property - omit it
     return {
       tag: 'Expr',
       exprType: ctrl.e.tag,
       exprSummary: exprSummary(ctrl.e),
-      source: ctrl.e.source ? `${ctrl.e.source.file ?? ''}:${ctrl.e.source.line}:${ctrl.e.source.column}` : undefined,
     };
   } else {
     return {
@@ -443,9 +438,10 @@ export function serializeState(
   // Include budget if present
   if (state.budget) {
     snapshot.budget = {
-      stepsRemaining: state.budget.steps,
-      tokensRemaining: state.budget.tokens,
-      costRemaining: state.budget.cost,
+      stepsRemaining: state.budget.stepsLeft,
+      inferCallsRemaining: state.budget.inferCallsLeft,
+      oracleReqsRemaining: state.budget.oracleReqLeft,
+      toolCallsRemaining: state.budget.toolCallsLeft,
     };
   }
 

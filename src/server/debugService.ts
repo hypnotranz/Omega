@@ -139,8 +139,9 @@ export interface MachineSnapshot {
   /** Budget remaining (if governance enabled) */
   budget?: {
     stepsRemaining?: number;
-    tokensRemaining?: number;
-    costRemaining?: number;
+    inferCallsRemaining?: number;
+    oracleReqsRemaining?: number;
+    toolCallsRemaining?: number;
   };
 }
 
