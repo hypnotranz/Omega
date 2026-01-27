@@ -240,7 +240,7 @@ export function checkProgressInvariants(
       violations.push({
         path: '$.next_state.iteration',
         code: 'INVALID_VALUE',
-        message: `Iteration must increase: ${prevIter} → ${nextIter}`,
+        message: `Iteration must increase: ${prevIter} -> ${nextIter}`,
       });
     }
   }
@@ -252,7 +252,7 @@ export function checkProgressInvariants(
       violations.push({
         path: '$.next_state.derived',
         code: 'INVALID_VALUE',
-        message: `Derived facts must grow monotonically: ${prevCount} → ${nextCount}`,
+        message: `Derived facts must grow monotonically: ${prevCount} -> ${nextCount}`,
       });
     }
   }
