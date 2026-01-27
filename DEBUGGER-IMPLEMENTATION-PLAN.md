@@ -1075,3 +1075,65 @@ The CESK machine, OPR runtime, and core infrastructure all work. The debug serve
 **Time to working server:** ~4-6 hours of bug fixing + testing.
 
 **Recommendation:** Fix compilation errors FIRST, then do a basic smoke test before any reorganization. Moving broken code into new directories accomplishes nothing.
+
+---
+
+## STATUS UPDATE (2026-01-27)
+
+### ALL BUGS FIXED
+
+| Bug | Fix Applied |
+|-----|-------------|
+| `COWStore.fork()` doesn't exist | Changed to `snapshot()` (3 locations) |
+| Wrong import path for primitives | `'../../test/helpers/prims'` -> `'../core/prims'` |
+| `'idle'` not in status union | Convert to `'paused'` before serialization |
+| Unknown Expr types | Use default case instead of specific cases |
+| `Expr.source` doesn't exist | Removed source property access |
+| `RuntimeBudget` wrong props | Changed to `stepsLeft`, `inferCallsLeft`, etc. |
+| `OprUsageInfo` doesn't exist | Changed to `LLMUsage` |
+| `supportsStreaming` missing | Added method to adapter |
+| `envGet` returns address not value | Read value from store using address |
+| ESM `require.main` | Use `import.meta.url` for main detection |
+| ESM `__dirname` | Use `fileURLToPath(import.meta.url)` |
+
+### WEB UI COMPLETE
+
+Beautiful dark-themed debugger UI at `public/`:
+- **index.html**: Full layout with CESK machine panels
+- **style.css**: Modern dark theme, responsive design
+- **app.js**: Complete WebSocket client
+
+Features:
+- Session management (create, list)
+- Code editor with Lisp syntax
+- Step/Step10/Continue/Run controls
+- CESK state visualization (C, E, S, K, H)
+- Call stack with frame details
+- Environment bindings display
+- Effect handling with manual resume
+- Time travel (click history to jump)
+- Keyboard shortcuts (F10, F5, F8)
+- Real-time WebSocket updates
+
+### TESTED END-TO-END
+
+```
+POST /session -> {"sessionId":"session_3_mkwbdxz2"}
+POST /session/:id/load {"code":"(define x 42) (+ x 10)"} -> {"success":true}
+POST /session/:id/step -> step 1, control: (define x$bid#1 ...)
+POST /session/:id/run -> {"outcome":"done","result":{"tag":"Num","summary":"52"}}
+```
+
+### COMMITS
+
+- `3c45d4c` - feat: Fix debug server bugs and add beautiful web UI
+- `aef9577` - docs: Add critical issues assessment to implementation plan
+- `4dfbba1` - docs: Add comprehensive OPR block diagram to implementation plan
+
+### TO RUN
+
+```bash
+cd OmegaLLM
+npx tsx src/server/debugServer.ts
+# Open http://localhost:3456
+```
