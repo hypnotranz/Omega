@@ -172,6 +172,119 @@ export class DebugServer implements IDebugService {
       }
     });
 
+    // ─── LLM-Powered Async Execution (THE MAGIC!) ───
+
+    // Check if session has LLM configured
+    app.get('/session/:id/llm-status', async (req, res) => {
+      try {
+        const info = this.sessions.get(req.params.id);
+        if (!info) throw new Error(`Session not found: ${req.params.id}`);
+        res.json({
+          hasLLM: info.session.hasLLM(),
+          model: info.session.getLLMModel(),
+          inspectMode: info.session.isLLMInspectMode(),
+          effectLog: info.session.getEffectLog(),
+        });
+      } catch (e) {
+        res.status(404).json({ error: (e as Error).message });
+      }
+    });
+
+    // Toggle LLM Inspector Mode
+    app.post('/session/:id/llm-inspect', async (req, res) => {
+      try {
+        const info = this.sessions.get(req.params.id);
+        if (!info) throw new Error(`Session not found: ${req.params.id}`);
+        const { enabled } = req.body;
+        info.session.setLLMInspectMode(enabled ?? !info.session.isLLMInspectMode());
+        res.json({
+          inspectMode: info.session.isLLMInspectMode(),
+        });
+      } catch (e) {
+        res.status(400).json({ error: (e as Error).message });
+      }
+    });
+
+    // Get pending LLM request details (for inspection)
+    app.get('/session/:id/pending-llm', async (req, res) => {
+      try {
+        const info = this.sessions.get(req.params.id);
+        if (!info) throw new Error(`Session not found: ${req.params.id}`);
+        const pending = info.session.getPendingLLMRequest();
+        res.json({
+          hasPending: pending !== null,
+          request: pending,
+        });
+      } catch (e) {
+        res.status(404).json({ error: (e as Error).message });
+      }
+    });
+
+    // Approve and execute pending LLM request
+    app.post('/session/:id/approve-llm', async (req, res) => {
+      console.log(`[API] POST /approve-llm called for session ${req.params.id}`);
+      try {
+        const info = this.sessions.get(req.params.id);
+        if (!info) throw new Error(`Session not found: ${req.params.id}`);
+        console.log(`[API] Calling approvePendingLLM...`);
+        const result = await info.session.approvePendingLLM();
+        console.log(`[API] approvePendingLLM returned: outcome=${result.outcome}, llmResponse=${JSON.stringify(result.llmResponse)?.slice(0, 200)}`);
+        res.json(result);
+        this.broadcastToSession(req.params.id, { type: 'snapshot', snapshot: result.snapshot });
+      } catch (e) {
+        console.error(`[API] approve-llm error:`, e);
+        res.status(400).json({ error: (e as Error).message });
+      }
+    });
+
+    // Step with auto-effect execution
+    app.post('/session/:id/step-async', async (req, res) => {
+      console.log(`\n🔵🔵🔵 STEP-ASYNC ENDPOINT CALLED 🔵🔵🔵`);
+      console.log(`Session: ${req.params.id}`);
+      try {
+        const info = this.sessions.get(req.params.id);
+        if (!info) throw new Error(`Session not found: ${req.params.id}`);
+        console.log(`[step-async] hasLLM: ${info.session.hasLLM()}, status before: ${info.session.getSnapshot().status}`);
+        const result = await info.session.stepAsync();
+        console.log(`[step-async] Result outcome: ${result.outcome}, effectLog length: ${info.session.getEffectLog().length}`);
+        res.json({
+          ...result,
+          effectLog: info.session.getEffectLog(),
+        });
+        this.broadcastToSession(req.params.id, { type: 'snapshot', snapshot: result.snapshot });
+      } catch (e) {
+        console.error(`[step-async] ERROR:`, e);
+        res.status(400).json({ error: (e as Error).message });
+      }
+    });
+
+    // Run to completion with auto-effect execution
+    app.post('/session/:id/run-async', async (req, res) => {
+      try {
+        const info = this.sessions.get(req.params.id);
+        if (!info) throw new Error(`Session not found: ${req.params.id}`);
+        const result = await info.session.runAsync();
+        res.json({
+          ...result,
+          effectLog: info.session.getEffectLog(),
+        });
+        this.broadcastToSession(req.params.id, { type: 'snapshot', snapshot: result.snapshot });
+      } catch (e) {
+        res.status(400).json({ error: (e as Error).message });
+      }
+    });
+
+    // Get effect execution log
+    app.get('/session/:id/effect-log', async (req, res) => {
+      try {
+        const info = this.sessions.get(req.params.id);
+        if (!info) throw new Error(`Session not found: ${req.params.id}`);
+        res.json({ effectLog: info.session.getEffectLog() });
+      } catch (e) {
+        res.status(404).json({ error: (e as Error).message });
+      }
+    });
+
     app.post('/session/:id/resume', async (req, res) => {
       try {
         const { value } = req.body;
