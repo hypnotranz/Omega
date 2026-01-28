@@ -263,10 +263,8 @@ export function serializeFrame(frame: Frame, index: number): SerializedFrame {
     waiting: frameWaiting(frame),
   };
 
-  // Extract bindings if frame has an env
-  if ('env' in frame && frame.env) {
-    base.bindings = extractBindings(frame.env, 5);
-  }
+  // Note: Frame bindings require store access - skip for now as main env shows bindings
+  // TODO: Pass store to serializeFrame if per-frame bindings are needed
 
   return base;
 }
@@ -326,14 +324,14 @@ function frameWaiting(frame: Frame): string {
 /**
  * Extract visible bindings from environment
  */
-export function extractBindings(env: Env, maxPerScope = 10): SerializedBinding[] {
+export function extractBindings(env: Env, store: any, maxPerScope = 10): SerializedBinding[] {
   const bindings: SerializedBinding[] = [];
   let depth = 0;
   let currentEnv: Env | null = env;
 
   while (currentEnv && depth < 10) {
-    // Env is a Ctx which has bindings in its chain
-    const scopeBindings = getEnvBindings(currentEnv);
+    // Env is a Ctx which has frame in its chain
+    const scopeBindings = getEnvBindings(currentEnv, store);
 
     for (const [name, val] of scopeBindings.slice(0, maxPerScope)) {
       bindings.push({
@@ -351,15 +349,75 @@ export function extractBindings(env: Env, maxPerScope = 10): SerializedBinding[]
   return bindings;
 }
 
+// Known primitive names to filter out from user view
+const PRIMITIVE_NAMES = new Set([
+  'signal', 'error', 'handler-bind', 'restart-bind', 'invoke-restart',
+  'find-restart', 'compute-restarts', '*uninit*',
+  '+', '-', '*', '/', '=', '<', '>', '<=', '>=', 'modulo', 'even?', 'not',
+  'cons', 'car', 'cdr', 'null?', 'pair?', 'list', 'list?', 'length',
+  'append', 'reverse', 'map', 'filter', 'foldl', 'foldr', 'apply',
+  'display', 'newline', 'print', 'write', 'read',
+  'vector', 'vector-ref', 'vector-set!', 'vector-length', 'make-vector',
+  'string-append', 'string-length', 'substring', 'string=?',
+  'number->string', 'string->number', 'symbol->string', 'string->symbol',
+  'eq?', 'eqv?', 'equal?', 'number?', 'string?', 'symbol?', 'boolean?',
+  'procedure?', 'vector?', 'and', 'or', 'if', 'cond', 'else', 'begin',
+  'define', 'set!', 'lambda', 'let', 'let*', 'letrec', 'quote',
+  'quasiquote', 'unquote', 'unquote-splicing',
+  'call/cc', 'call-with-current-continuation',
+  'abs', 'min', 'max', 'floor', 'ceiling', 'round', 'truncate',
+  'exp', 'log', 'sin', 'cos', 'tan', 'sqrt', 'expt',
+  'char?', 'char=?', 'char<?', 'char>?',
+  'cadr', 'caddr', 'cddr', 'caar', 'cdar',
+  'assoc', 'assq', 'assv', 'member', 'memq', 'memv',
+  'gensym', 'compose', 'identity', 'void',
+]);
+
+/**
+ * Check if a name is a USER-defined binding (not a primitive)
+ */
+function isUserBinding(name: string): boolean {
+  // User bindings from macro expansion have $bid suffix
+  if (name.includes('$bid')) return true;
+
+  // Check if it's NOT in the primitives list - that means it's user-defined
+  if (!PRIMITIVE_NAMES.has(name)) return true;
+
+  return false;
+}
+
 /**
  * Get bindings from a single Env/Ctx scope
+ * NOTE: Env is a Ctx with `frame: Map<string, Addr>` - addresses, not values!
+ * We need the store to read actual values.
  */
-function getEnvBindings(env: Env): Array<[string, Val]> {
-  // Env is a Ctx with .bindings Map<string, Val>
-  if (env.bindings && env.bindings instanceof Map) {
-    return Array.from(env.bindings.entries());
+function getEnvBindings(env: Env, store: any): Array<[string, Val]> {
+  const userBindings: Array<[string, Val]> = [];
+  const primitiveBindings: Array<[string, Val]> = [];
+
+  // Env/Ctx has .frame which is Map<string, Addr>
+  if (env.frame && env.frame instanceof Map) {
+    for (const [name, addr] of env.frame.entries()) {
+      try {
+        const val = store.read(addr);
+        if (val !== undefined) {
+          // Separate user bindings from primitives
+          if (isUserBinding(name)) {
+            // Clean up the name for display (remove $bid#N suffix)
+            const displayName = name.replace(/\$bid#\d+$/, '');
+            userBindings.push([displayName, val]);
+          } else {
+            primitiveBindings.push([name, val]);
+          }
+        }
+      } catch {
+        // Skip if can't read
+      }
+    }
   }
-  return [];
+
+  // Return user bindings first, then primitives
+  return [...userBindings, ...primitiveBindings];
 }
 
 // ============================================================
@@ -400,7 +458,7 @@ export function serializeState(
 
     control: serializeControl(state.control),
 
-    environment: extractBindings(state.env, 20),
+    environment: extractBindings(state.env, state.store, 20),
 
     callStack: state.kont.map((frame, i) => serializeFrame(frame, i)),
 

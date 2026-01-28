@@ -54,3 +54,16 @@ export {
   formatReport,
   formatSuiteResult,
 } from "./runner";
+
+// Adapter factory with dependency injection
+export {
+  createOracleAdapter,
+  createLiveLLMAdapter,
+  getConfigFromEnv,
+  LiveCallRequired,
+  oracleHandle,
+  isLiveAdapter,
+  type AdapterMode,
+  type LiveLLMConfig,
+  type AdapterFactoryConfig,
+} from "./adapter-factory";

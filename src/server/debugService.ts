@@ -168,6 +168,20 @@ export interface Breakpoint {
 }
 
 /**
+ * LLM provider configuration
+ */
+export interface LLMConfig {
+  /** Provider type */
+  provider: 'openai' | 'anthropic' | 'scripted';
+  /** API key (from env or explicit) */
+  apiKey?: string;
+  /** Model to use */
+  model?: string;
+  /** For scripted provider: pre-defined responses */
+  scriptedResponses?: string[];
+}
+
+/**
  * Session configuration
  */
 export interface SessionConfig {
@@ -179,6 +193,10 @@ export interface SessionConfig {
   maxSteps?: number;
   /** Oracle adapter to use */
   oracleAdapter?: 'openai' | 'anthropic' | 'mock';
+  /** LLM configuration for auto-handling effects */
+  llm?: LLMConfig;
+  /** Auto-execute OPR effects (requires llm config) */
+  autoExecuteOpr?: boolean;
 }
 
 /**

@@ -14,6 +14,7 @@ import type {
   OracleTranscript,
 } from "./types";
 import { createScriptedOracleAdapter } from "./oracle-adapter";
+import { createOracleAdapter, getConfigFromEnv, type AdapterFactoryConfig } from "./adapter-factory";
 import { createDemoLedger, countEventsByType } from "./ledger";
 import type { Profile } from "../../src/core/governance/profile";
 
@@ -96,19 +97,52 @@ export function getProfile(name: string): Profile {
 
 /**
  * Run a single demo and generate report.
+ *
+ * @param demo - The demo definition to run
+ * @param profileName - Governance profile (explore, pragmatic, strict, airgap)
+ * @param seed - Random seed for determinism
+ * @param options - Demo options
+ * @param replayTranscript - Optional transcript for replay mode
+ * @param adapterConfig - Optional adapter config to override environment settings
+ *
+ * @example
+ * ```ts
+ * // Run with mock adapter (default)
+ * const report = await runDemo(myDemo, "pragmatic", 42);
+ *
+ * // Run with live LLM calls
+ * const report = await runDemo(myDemo, "pragmatic", 42, {}, undefined, {
+ *   mode: "live",
+ *   live: { provider: "openai", model: "gpt-4.1-nano", apiKey: "..." }
+ * });
+ *
+ * // Or set environment variables:
+ * // OMEGA_ADAPTER_MODE=live
+ * // OPENAI_API_KEY=sk-...
+ * const report = await runDemo(myDemo, "pragmatic", 42);
+ * ```
  */
 export async function runDemo(
   demo: DemoDefinition,
   profileName: string,
   seed: number,
   options: DemoOptions = {},
-  replayTranscript?: OracleTranscript
+  replayTranscript?: OracleTranscript,
+  adapterConfig?: AdapterFactoryConfig
 ): Promise<WowReport> {
   const startTime = Date.now();
   const profile = getProfile(profileName);
-  const oracle = createScriptedOracleAdapter(demo.id, seed, profileName);
+  // Use factory for adapter creation - supports mock/live/hybrid modes
+  const oracle = createOracleAdapter(demo.id, seed, profileName, adapterConfig);
   const ledger = createDemoLedger();
   const random = createSeededRandom(seed);
+
+  // Log adapter mode
+  const isLive = (oracle as any).isLive === true;
+  if (isLive) {
+    const config = (oracle as any).config;
+    console.log(`[Demo] Running "${demo.id}" with LIVE ${config?.provider}/${config?.model}`);
+  }
 
   // Load replay transcript if provided
   if (replayTranscript) {
@@ -234,21 +268,32 @@ export async function runDemo(
 
 /**
  * Run multiple demos and generate suite result.
+ *
+ * @param demos - Array of demo definitions to run
+ * @param profileName - Governance profile
+ * @param seed - Random seed
+ * @param options - Demo options
+ * @param adapterConfig - Optional adapter config for mock/live mode
  */
 export async function runSuite(
   demos: DemoDefinition[],
   profileName: string,
   seed: number,
-  options: DemoOptions = {}
+  options: DemoOptions = {},
+  adapterConfig?: AdapterFactoryConfig
 ): Promise<SuiteResult> {
   const reports: WowReport[] = [];
   let passed = 0;
   let failed = 0;
   let skipped = 0;
 
+  // Log mode for suite
+  const resolvedConfig = adapterConfig ?? getConfigFromEnv();
+  console.log(`[Suite] Running ${demos.length} demos in ${resolvedConfig.mode.toUpperCase()} mode`);
+
   for (const demo of demos) {
     try {
-      const report = await runDemo(demo, profileName, seed, options);
+      const report = await runDemo(demo, profileName, seed, options, undefined, adapterConfig);
       reports.push(report);
 
       const allPassed = report.invariants.every(i => i.ok);
