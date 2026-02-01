@@ -180,6 +180,10 @@ export function valToJson(v: Val): unknown {
       return { $type: 'GenericMiss', op: v.op, signature: v.signature };
     case 'FactStore':
       return { $type: 'FactStore' };
+    case 'Evaluator':
+      return { $type: 'Evaluator', $opaque: true };
+    case 'MacroTransformer':
+      return { $type: 'MacroTransformer', name: v.name, $opaque: true };
 
     default: {
       // Exhaustive check - if we get here, we have an unhandled tag

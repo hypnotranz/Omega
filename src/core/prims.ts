@@ -6,6 +6,7 @@ import type { Env } from "./eval/env";
 import { envEmpty, envSet } from "./eval/env";
 import type { Store } from "./eval/store";
 import type { State, Frame, StepOutcome } from "./eval/machine";
+import { stepOnce } from "./eval/machineStep";
 import type { Val } from "./eval/values";
 import { VUnit, VTrue, VFalse } from "./eval/values";
 import type { Expr } from "./ast";
@@ -2727,8 +2728,7 @@ export function installPrims(store: Store): { env: Env; store: Store } {
       return { ...s, control: { tag: "Val", v: m } };
     }
 
-    // Import stepOnce dynamically to avoid circular deps
-    const { stepOnce } = require("../../src/core/eval/machineStep");
+    // stepOnce imported at top of file
     const outcome = stepOnce(m.state);
 
     const updated: Val = {
@@ -2754,7 +2754,7 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     if (m.isDone) return { ...s, control: { tag: "Val", v: m } };
 
     const maxSteps = args.length > 1 && args[1].tag === "Num" ? args[1].n : 10000;
-    const { stepOnce } = require("../../src/core/eval/machineStep");
+    // stepOnce imported at top of file
 
     let current = m;
     for (let i = 0; i < maxSteps; i++) {
@@ -2940,6 +2940,378 @@ export function installPrims(store: Store): { env: Env; store: Store } {
   // (machine? x) -> boolean
   def("machine?", { tag: "Native", name: "machine?", arity: 1, fn: (args, s) => {
     return { ...s, control: { tag: "Val", v: args[0].tag === "Machine" ? VTrue : VFalse } };
+  }});
+
+  // ═══════════════════════════════════════════════════════════════════
+  // LANGUAGE BUILDING PRIMITIVES
+  // These make it trivial to build DSLs and new languages on OmegaLLM
+  // ═══════════════════════════════════════════════════════════════════
+
+  // eval: Evaluate a quoted expression
+  // (eval '(+ 1 2)) -> 3
+  // (eval expr env) -> result (with custom environment)
+  def("eval", { tag: "Native", name: "eval", arity: "variadic", fn: (args, s) => {
+    if (args.length < 1) throw new Error("eval: expected at least 1 argument");
+    const quotedExpr = args[0];
+
+    // Convert Val to Sexp for parsing
+    function valToSexp(v: Val): any {
+      if (v.tag === "Num") return v.n;
+      if (v.tag === "Str") return v.s;
+      if (v.tag === "Bool") return v.b;
+      if (v.tag === "Sym") return { sym: v.name };
+      if (v.tag === "Unit") return null;
+      if (v.tag === "Vector") {
+        // Convert cons-cell list to array
+        const items: any[] = [];
+        let current: Val = v;
+        while (current.tag === "Vector" && current.items.length === 2) {
+          items.push(valToSexp(current.items[0]));
+          current = current.items[1];
+        }
+        return items;
+      }
+      throw new Error(`eval: cannot convert ${v.tag} to expression`);
+    }
+
+    try {
+      const sexp = valToSexp(quotedExpr);
+      const expr = compileTextToExpr(JSON.stringify(sexp)
+        .replace(/\{"sym":"([^"]+)"\}/g, '$1')
+        .replace(/^\[/, '(').replace(/\]$/, ')')
+        .replace(/,/g, ' ')
+        .replace(/"/g, '"'));
+
+      // Actually we need to compile from sexp properly - use simpler approach
+      // Just reparse the pretty-printed version
+      function sexpToString(s: any): string {
+        if (s === null) return "()";
+        if (typeof s === "number") return String(s);
+        if (typeof s === "string") return `"${s}"`;
+        if (typeof s === "boolean") return s ? "#t" : "#f";
+        if (typeof s === "object" && "sym" in s) return s.sym;
+        if (Array.isArray(s)) return `(${s.map(sexpToString).join(" ")})`;
+        return String(s);
+      }
+
+      const code = sexpToString(sexp);
+      const compiled = compileTextToExpr(code);
+
+      // Create a sub-machine to evaluate
+      const subState: any = {
+        control: { tag: "Expr", e: compiled },
+        env: args.length > 1 ? (args[1] as any).env || s.env : s.env,
+        store: s.store,
+        kont: [],
+        handlers: s.handlers || [],
+      };
+
+      // stepOnce imported at top of file
+      let current = subState;
+      for (let i = 0; i < 10000; i++) {
+        const outcome = stepOnce(current);
+        if (outcome.tag === "Done") {
+          return { ...s, control: { tag: "Val", v: outcome.value }, store: outcome.state?.store || s.store };
+        }
+        if (outcome.tag === "Op") {
+          throw new Error(`eval: cannot handle effect ${outcome.opcall.op} in eval`);
+        }
+        current = outcome.state;
+      }
+      throw new Error("eval: exceeded step limit");
+    } catch (e: any) {
+      throw new Error(`eval: ${e.message}`);
+    }
+  }});
+
+  // gensym: Generate a unique symbol (for macro hygiene)
+  // (gensym) -> fresh symbol
+  // (gensym "prefix") -> symbol with prefix
+  // Uses the existing gensym helper function defined earlier
+  def("gensym", { tag: "Native", name: "gensym", arity: "variadic", fn: (args, s) => {
+    const prefix = args.length > 0 && args[0].tag === "Str" ? args[0].s : "g";
+    const sym: Val = { tag: "Sym", name: gensym(prefix) };
+    return { ...s, control: { tag: "Val", v: sym } };
+  }});
+
+  // syntax->datum: Convert syntax object to data (for macro transformers)
+  // (syntax->datum stx) -> datum
+  def("syntax->datum", { tag: "Native", name: "syntax->datum", arity: 1, fn: (args, s) => {
+    // For now, just return the value as-is (syntax objects are values)
+    return { ...s, control: { tag: "Val", v: args[0] } };
+  }});
+
+  // datum->syntax: Convert datum to syntax object
+  // (datum->syntax datum) -> syntax
+  def("datum->syntax", { tag: "Native", name: "datum->syntax", arity: 1, fn: (args, s) => {
+    // For now, just return the value as-is
+    return { ...s, control: { tag: "Val", v: args[0] } };
+  }});
+
+  // make-transformer: Create a macro transformer from a procedure
+  // (make-transformer proc) -> transformer
+  // The proc takes (syntax) and returns (syntax)
+  def("make-transformer", { tag: "Native", name: "make-transformer", arity: 1, fn: (args, s) => {
+    const proc = args[0];
+    if (!isCallable(proc)) throw new Error("make-transformer: expected procedure");
+
+    const transformer: Val = {
+      tag: "MacroTransformer",
+      proc,
+      name: "user-macro",
+    };
+    return { ...s, control: { tag: "Val", v: transformer } };
+  }});
+
+  // make-evaluator: Create a custom evaluator with extended primitives
+  // (make-evaluator :base base-eval :extend extensions) -> evaluator
+  // Extensions is an alist of (name . procedure) pairs
+  def("make-evaluator", { tag: "Native", name: "make-evaluator", arity: "variadic", fn: (args, s) => {
+    // Parse keyword args
+    let baseEval: Val | undefined = undefined;
+    let extensions: Val = VUnit;
+    const primitives = new Map<string, Val>();
+
+    for (let i = 0; i < args.length - 1; i += 2) {
+      const key = args[i];
+      const val = args[i + 1];
+      if (key.tag === "Sym" && key.name === ":base") baseEval = val;
+      if (key.tag === "Sym" && key.name === ":extend") extensions = val;
+    }
+
+    // If extensions is a list, parse it
+    if (extensions.tag === "Vector") {
+      let current: Val = extensions;
+      while (current.tag === "Vector" && current.items.length === 2) {
+        const pair = current.items[0];
+        if (pair.tag === "Vector" && pair.items.length === 2) {
+          const name = pair.items[0];
+          const proc = pair.items[1];
+          if (name.tag === "Sym" && isCallable(proc)) {
+            primitives.set(name.name, proc);
+          }
+        }
+        current = current.items[1];
+      }
+    }
+
+    // Create evaluator record
+    const evaluator: Val = {
+      tag: "Evaluator",
+      base: baseEval,
+      extensions,
+      primitives,
+    };
+
+    return { ...s, control: { tag: "Val", v: evaluator } };
+  }});
+
+  // eval-in: Evaluate expression in a custom evaluator
+  // (eval-in evaluator expr) -> result
+  def("eval-in", { tag: "Native", name: "eval-in", arity: 2, fn: (args, s) => {
+    const evaluator = args[0] as any;
+    const expr = args[1];
+
+    if (evaluator.tag !== "Evaluator") {
+      throw new Error("eval-in: expected Evaluator");
+    }
+
+    // Build environment with custom primitives
+    let customEnv = s.env;
+    const prims = evaluator.primitives as Map<string, Val>;
+    if (prims) {
+      for (const [name, proc] of prims) {
+        const [st2, addr] = st.alloc(proc);
+        st = st2;
+        customEnv = envSet(customEnv, name, addr);
+      }
+    }
+
+    // Evaluate the expression
+    function valToSexp(v: Val): any {
+      if (v.tag === "Num") return v.n;
+      if (v.tag === "Str") return v.s;
+      if (v.tag === "Bool") return v.b;
+      if (v.tag === "Sym") return { sym: v.name };
+      if (v.tag === "Unit") return null;
+      if (v.tag === "Vector") {
+        const items: any[] = [];
+        let current: Val = v;
+        while (current.tag === "Vector" && current.items.length === 2) {
+          items.push(valToSexp(current.items[0]));
+          current = current.items[1];
+        }
+        return items;
+      }
+      return null;
+    }
+
+    function sexpToString(sx: any): string {
+      if (sx === null) return "()";
+      if (typeof sx === "number") return String(sx);
+      if (typeof sx === "string") return `"${sx}"`;
+      if (typeof sx === "boolean") return sx ? "#t" : "#f";
+      if (typeof sx === "object" && "sym" in sx) return sx.sym;
+      if (Array.isArray(sx)) return `(${sx.map(sexpToString).join(" ")})`;
+      return String(sx);
+    }
+
+    try {
+      const sexp = valToSexp(expr);
+      const code = sexpToString(sexp);
+      const compiled = compileTextToExpr(code);
+
+      const subState: any = {
+        control: { tag: "Expr", e: compiled },
+        env: customEnv,
+        store: st,
+        kont: [],
+        handlers: s.handlers || [],
+      };
+
+      // stepOnce imported at top of file
+      let current = subState;
+      for (let i = 0; i < 10000; i++) {
+        const outcome = stepOnce(current);
+        if (outcome.tag === "Done") {
+          return { ...s, control: { tag: "Val", v: outcome.value }, store: outcome.state?.store || st };
+        }
+        if (outcome.tag === "Op") {
+          throw new Error(`eval-in: cannot handle effect ${outcome.opcall.op}`);
+        }
+        current = outcome.state;
+      }
+      throw new Error("eval-in: exceeded step limit");
+    } catch (e: any) {
+      throw new Error(`eval-in: ${e.message}`);
+    }
+  }});
+
+  // evaluator?: Check if value is an Evaluator
+  def("evaluator?", { tag: "Native", name: "evaluator?", arity: 1, fn: (args, s) => {
+    return { ...s, control: { tag: "Val", v: (args[0] as any).tag === "Evaluator" ? VTrue : VFalse } };
+  }});
+
+  // extend-evaluator: Add primitives to an evaluator
+  // (extend-evaluator eval (list (cons 'name proc) ...)) -> new-eval
+  def("extend-evaluator", { tag: "Native", name: "extend-evaluator", arity: 2, fn: (args, s) => {
+    const evaluator = args[0] as any;
+    const extensions = args[1];
+
+    if (evaluator.tag !== "Evaluator") {
+      throw new Error("extend-evaluator: expected Evaluator");
+    }
+
+    // Clone the evaluator with new primitives
+    const newPrims = new Map<string, Val>(evaluator.primitives);
+
+    let current = extensions;
+    while (current.tag === "Vector" && current.items.length === 2) {
+      const pair = current.items[0];
+      if (pair.tag === "Vector" && pair.items.length === 2) {
+        const name = pair.items[0];
+        const proc = pair.items[1];
+        if (name.tag === "Sym" && isCallable(proc)) {
+          newPrims.set(name.name, proc);
+        }
+      }
+      current = current.items[1];
+    }
+
+    const newEval: Val = {
+      tag: "Evaluator",
+      base: evaluator.base,
+      extensions: evaluator.extensions,
+      primitives: newPrims,
+    };
+
+    return { ...s, control: { tag: "Val", v: newEval } };
+  }});
+
+  // ═══════════════════════════════════════════════════════════════════
+  // SIMPLE MACRO SYSTEM (defmacro-style, non-hygienic but easy)
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Global macro table for defmacro-style macros
+  const macroTable = new Map<string, Val>();
+
+  // register-macro: Register a macro transformer
+  // (register-macro 'name transformer) -> 'name
+  def("register-macro", { tag: "Native", name: "register-macro", arity: 2, fn: (args, s) => {
+    const name = args[0];
+    const transformer = args[1];
+
+    if (name.tag !== "Sym") throw new Error("register-macro: name must be a symbol");
+    if (!isCallable(transformer)) throw new Error("register-macro: transformer must be a procedure");
+
+    macroTable.set(name.name, transformer);
+    return { ...s, control: { tag: "Val", v: name } };
+  }});
+
+  // expand-macro: Expand a macro if registered
+  // (expand-macro expr) -> expanded-expr or original-expr
+  def("expand-macro", { tag: "Native", name: "expand-macro", arity: 1, fn: (args, s) => {
+    const expr = args[0];
+
+    // Only expand lists with symbolic head
+    if (expr.tag !== "Vector" || expr.items.length < 1) {
+      return { ...s, control: { tag: "Val", v: expr } };
+    }
+
+    // Get the head
+    let head = expr.items[0];
+    if (head.tag === "Vector" && head.items.length === 2) {
+      head = head.items[0]; // car of cons
+    }
+
+    if (head.tag !== "Sym") {
+      return { ...s, control: { tag: "Val", v: expr } };
+    }
+
+    const transformer = macroTable.get(head.name);
+    if (!transformer) {
+      return { ...s, control: { tag: "Val", v: expr } };
+    }
+
+    // Apply the transformer to the expression
+    // For Native functions, apply directly
+    if (transformer.tag === "Native") {
+      return transformer.fn([expr], s);
+    }
+
+    // For Closures, set up application with KAppArg frame
+    if (transformer.tag === "Closure") {
+      const frame: Frame = {
+        tag: "KAppArg",
+        fnVal: transformer,
+        pending: [],
+        acc: [expr],
+        env: s.env,
+      };
+      return {
+        ...s,
+        control: { tag: "Val", v: transformer },
+        kont: [...s.kont, frame],
+      };
+    }
+
+    // Otherwise just return original expression
+    return { ...s, control: { tag: "Val", v: expr } };
+  }});
+
+  // macro?: Check if a symbol names a registered macro
+  def("macro?", { tag: "Native", name: "macro?", arity: 1, fn: (args, s) => {
+    if (args[0].tag !== "Sym") return { ...s, control: { tag: "Val", v: VFalse } };
+    return { ...s, control: { tag: "Val", v: macroTable.has(args[0].name) ? VTrue : VFalse } };
+  }});
+
+  // list-macros: List all registered macros
+  def("list-macros", { tag: "Native", name: "list-macros", arity: 0, fn: (args, s) => {
+    let result: Val = VUnit;
+    for (const name of macroTable.keys()) {
+      result = { tag: "Vector", items: [{ tag: "Sym", name }, result] };
+    }
+    return { ...s, control: { tag: "Val", v: result } };
   }});
 
   // Provenance primitives (provenance graph + evidence operations)

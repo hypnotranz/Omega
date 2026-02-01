@@ -69,6 +69,7 @@
 - [Chapter 47: Provenance And Evidence Chains](USER-MANUAL--47--Provenance-And-Evidence-Chains.md) *(OmegaLLM-Specific)*
 - [Chapter 48: Budget Management](USER-MANUAL--48--Budget-Management.md) *(OmegaLLM-Specific)*
 - [Chapter 49: Semantic Caching Strategies](USER-MANUAL--49--Semantic-Caching-Strategies.md) *(OmegaLLM-Specific)*
+- [Chapter 50: Language Building — The Sussman Lattice](USER-MANUAL--50--Language-Building.md) *(OmegaLLM-Specific)*
 
 ### Appendices
 

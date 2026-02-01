@@ -67,7 +67,7 @@ npm run demo                           # See full LLM features
 ```
 
 **📖 [Demo Index](DEMO-INDEX.md)** — **All 39 demos organized by category** ← Start here!
-**📖 [Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)** — See 49 working demos with live LLM outputs
+**📖 [Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)** — See 50 working demos with live LLM outputs
 **📖 [Full Manual](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/)** — 27 chapters, SICP for LLMs
 
 ---
@@ -90,7 +90,7 @@ Instead of writing glue code that loses context every call, you write **programs
 - [⚠️ Common Gotchas](#️-common-gotchas)
 - [Features at a Glance](#features-at-a-glance)
 - [📖 The Manual](#-the-manual-structure-and-interpretation-of-linguistic-programs) (27 chapters)
-- [🎨 Demo Gallery](#-demo-gallery) (49 demos)
+- [🎨 Demo Gallery](#-demo-gallery) (50 demos)
 - [REPL Guide](#repl-guide)
 - [Sessions: Persistent State](#sessions-persistent-state-for-ai-agents)
 - [Core Primitives](#core-primitives-effects-search-streams)
@@ -115,6 +115,7 @@ Instead of writing glue code that loses context every call, you write **programs
 | **Receipts** | Every LLM call produces auditable provenance |
 | **OPR Kernels** | `:opr-run` — run structured inference programs |
 | **Budget/Policy** | Enforce spending limits and capability restrictions |
+| **Language Building** | `make-evaluator`, `eval`, `register-macro` — coin DSLs on the fly |
 
 **Run `:help` in the REPL to see all commands.**
 
@@ -193,6 +194,29 @@ Omega> :goto 10        ;; Jump back in time!
 Control: Value: 3
 ```
 
+### 6. 🏗️ Language Building — LLMs Coin DSLs On-The-Fly
+
+```lisp
+;; Generate unique symbols for hygienic macros
+(gensym "temp")  ;; => temp-42
+
+;; Register new syntax on-the-fly
+(register-macro 'unless
+  (lambda (form)
+    (list 'if (list 'not (cadr form)) (caddr form))))
+
+;; Create custom evaluators (DSLs!)
+(define math-dsl (make-evaluator))
+
+;; Reify evaluation as data — step through, fork, inspect
+(define m (machine-new '(+ 1 2)))
+(machine-step m)   ;; Step one instruction
+(machine-run m)    ;; Run to completion
+(machine-fork m)   ;; Clone execution state
+```
+
+**All 7 Sussman mechanisms** for building languages are first-class primitives. LLMs can literally create new programming languages during a session. [See Chapter 50 →](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/chapters/USER-MANUAL--50--Language-Building.md)
+
 ---
 
 ## Features
@@ -237,6 +261,41 @@ Why AI agents love OmegaLLM:
 - **Distributive inference**: Generate distributions over answers
 - **Repair/retry loops**: Automatic validation and repair
 - **Recursive decomposition**: Break problems into semantic subproblems
+
+### 🏗️ **Language Building** (The Sussman Lattice)
+
+OmegaLLM supports **all 7 Sussman mechanisms** for building new languages:
+
+| Mechanism | Primitive | What It Enables |
+|-----------|-----------|-----------------|
+| **Syntactic Extension** | `register-macro`, `expand-macro` | Define new syntax forms like `unless`, `when-let` |
+| **Parameterized Evaluators** | `make-evaluator`, `eval-in` | Create domain-specific languages with custom primitives |
+| **Meta-Circular Towers** | `eval`, `make-machine` | Evaluators that evaluate evaluators |
+| **Control Operators** | `call/cc`, `amb`, `require` | Backtracking, generators, exceptions, coroutines |
+| **Semantic Reification** | `machine-step`, `machine-control` | Debuggers, analyzers, time-travel |
+| **Symbol Generation** | `gensym` | Hygienic macro writing |
+
+**Example: LLM coins a DSL on the fly**
+
+```lisp
+;; Define a custom language for contract analysis
+(define contract-dsl
+  (make-evaluator
+    :extend (list
+      (cons 'parse-contract parse-contract-fn)
+      (cons 'extract-obligations extract-fn)
+      (cons 'check-compliance check-fn))))
+
+;; Use the DSL
+(eval-in contract-dsl
+  '(check-compliance
+     (extract-obligations (parse-contract doc))
+     policy))
+```
+
+```bash
+npm run demo-dsl   # See language-building demo
+```
 
 ---
 
@@ -340,7 +399,7 @@ npm run manual 7    # Chapter 7: Lazy streams
 npm run manual 8    # Chapter 8: The debugger
 ```
 
-**See all 49 demos**: [DEMO-GALLERY.md](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)
+**See all 50 demos**: [DEMO-GALLERY.md](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)
 
 ---
 
@@ -387,7 +446,7 @@ Sessions are stored in `.omega-session/sessions/` (not `.omega-sessions/`):
 ```
 
 ### 5. Use the Demo Gallery!
-Don't guess at syntax. The [Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md) has 49 working examples with actual LLM outputs.
+Don't guess at syntax. The [Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md) has 50 working examples with actual LLM outputs.
 
 ```bash
 npm run manual 5   # See amb backtracking in action
@@ -405,7 +464,7 @@ The complete user manual adapts the principles of *Structure and Interpretation 
 ### What's in the Manual
 
 - **27 Core Chapters** — From basics to metalinguistic abstraction
-- **49 Working Examples** — Every concept demonstrated with runnable code
+- **50 Working Examples** — Every concept demonstrated with runnable code
 - **SICP Principles Applied** — Higher-order functions, streams, nondeterminism, metacircular evaluation
 - **Progressive Learning** — Start simple, build to advanced patterns
 
@@ -435,7 +494,7 @@ The complete user manual adapts the principles of *Structure and Interpretation 
 
 ## 🎨 Demo Gallery
 
-**See all 49 demos with live LLM outputs**: **[DEMO-GALLERY.md](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)**
+**See all 50 demos with live LLM outputs**: **[DEMO-GALLERY.md](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)**
 
 Quick preview of key demos:
 
@@ -1017,7 +1076,7 @@ See [LICENSE](LICENSE) file for details.
 ## Resources
 
 - **📖 User Manual**: [Structure and Interpretation of Linguistic Programs](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/)
-- **🎨 Demo Gallery**: [All 49 demos with outputs](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)
+- **🎨 Demo Gallery**: [All 50 demos with outputs](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)
 - **🏗️ Architecture Docs**: [ARCHITECTURE/](ARCHITECTURE/) (50+ specs for developers)
 - **💬 Issues**: [GitHub Issues](https://github.com/hypnotranz/Omega/issues)
 - **🗣️ Discussions**: [GitHub Discussions](https://github.com/hypnotranz/Omega/discussions)
@@ -1060,7 +1119,7 @@ The manual **[Structure and Interpretation of Linguistic Programs](MANUAL--STRUC
 | Resource | What You Get |
 |----------|--------------|
 | **[Instant Showcase](demo/lisp/ch00-instant-showcase.lisp)** | Run `npm run demo-instant` — proves all primitives work, no API key needed |
-| **[Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)** | 49 working examples with live LLM outputs |
+| **[Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)** | 50 working examples with live LLM outputs |
 | **[Full Manual](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/)** | 27 chapters from basics to metacircular evaluation |
 | **[Treatise](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/chapters/TREATISE.md)** | Complete formal vocabulary (64 CDT definitions) |
 

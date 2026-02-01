@@ -167,16 +167,52 @@
 (display "    :session goto 15  ; Environment restored!\n\n")
 
 ;; ========================================================================
+;; PART 6: Language Building (The Sussman Lattice)
+;; ========================================================================
+(display "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+(display "PART 6: Language Building (DSLs on-the-fly)\n")
+(display "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+
+;; gensym - hygienic symbol generation
+(define s1 (gensym))
+(define s2 (gensym "temp"))
+(display "gensym generates unique symbols:\n")
+(display "  s1 = ") (display s1) (newline)
+(display "  s2 = ") (display s2) (newline)
+(display "  (equal? s1 s2) = ") (display (equal? s1 s2)) (newline)
+
+;; register-macro - syntactic extension
+(register-macro 'double-it
+  (lambda (form)
+    (let ((x (cadr form)))
+      (list '* 2 x))))
+(display "\nregister-macro adds new syntax:\n")
+(display "  (macro? 'double-it) = ") (display (macro? 'double-it)) (newline)
+
+;; make-evaluator - custom evaluators
+(define my-dsl (make-evaluator))
+(display "\nmake-evaluator creates DSLs:\n")
+(display "  (evaluator? my-dsl) = ") (display (evaluator? my-dsl)) (newline)
+
+;; machine-new - eval as data (reified machines)
+(define m (machine-new '(+ 1 2)))
+(display "\nmachine-new reifies evaluation:\n")
+(display "  (machine? m) = ") (display (machine? m)) (newline)
+
+(display "\nWith these primitives, LLMs can coin language games on-the-fly!\n")
+
+;; ========================================================================
 ;; FINALE
 ;; ========================================================================
-(display "╔══════════════════════════════════════════════════════════════════╗\n")
+(display "\n╔══════════════════════════════════════════════════════════════════╗\n")
 (display "║  ✅ ALL PRIMITIVES VERIFIED WORKING                             ║\n")
 (display "╠══════════════════════════════════════════════════════════════════╣\n")
 (display "║  ✓ map/filter/fold - higher-order over any operation           ║\n")
 (display "║  ✓ amb + require - backtracking search with constraints        ║\n")
 (display "║  ✓ stream-cons - lazy infinite sequences                       ║\n")
 (display "║  ✓ stream->list - force N elements on-demand                   ║\n")
-(display "║  ✓ display/newline - proper output primitives                  ║\n")
+(display "║  ✓ gensym/register-macro - syntactic extension                 ║\n")
+(display "║  ✓ make-evaluator/machine-new - DSL & machine reification      ║\n")
 (display "║  ✓ sessions - persistent state across restarts                 ║\n")
 (display "╚══════════════════════════════════════════════════════════════════╝\n\n")
 

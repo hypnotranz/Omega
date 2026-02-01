@@ -1,6 +1,6 @@
 # OmegaLLM Demo Gallery
 
-**All 49 Chapter Demos with Live LLM Outputs**
+**All 50 Chapter Demos with Live LLM Outputs**
 
 *Generated: 2026-01-31*
 
@@ -1894,6 +1894,81 @@ npm run manual <chapter-number>
 - **Pattern:** Cache lookup → LLM validation gate → boolean result
 - **Use Case:** Semantic caching with freshness guarantees, adaptive memoization, context-aware cache invalidation
 - **Key Insight:** Adds lightweight LLM validation to prevent serving stale cached results, balancing performance (cache) with accuracy (validation)
+
+---
+
+## Chapter 50: Language Building — The Sussman Lattice
+
+**Run:** `npm run manual 50`
+
+**Pattern:** First-class language building primitives
+**Cognitive Type:** Metalinguistic construction (CDT: LanguageConstruction)
+**Description:** Demonstrates the seven Sussman mechanisms for building languages: syntactic extension, symbol generation, custom evaluators, evaluator composition, machine reification, continuation control, and syntax conversion. LLMs can use these primitives to coin new language games and DSLs on-the-fly.
+
+### Code
+
+```lisp
+;; Chapter 50: Language Building — The Sussman Lattice
+;; All seven mechanisms for building languages as first-class primitives
+
+;; 1. Symbol Generation (gensym)
+(define s1 (gensym))
+(define s2 (gensym "temp"))
+(symbol? s1)  ;; => #t
+
+;; 2. Macro Registration (register-macro)
+(register-macro 'unless
+  (lambda (form)
+    (let ((condition (cadr form))
+          (body (caddr form)))
+      (list 'if (list 'not condition) body))))
+(macro? 'unless)  ;; => #t
+
+;; 3. Custom Evaluator (make-evaluator)
+(define double (lambda (x) (* x 2)))
+(define math-dsl (make-evaluator))
+(evaluator? math-dsl)  ;; => #t
+
+;; 4. Machine Reification (machine-new, machine-step, machine-run)
+(define m (machine-new '(+ 1 2)))
+(machine? m)  ;; => #t
+(define m1 (machine-step m))
+(machine-step-count m1)  ;; => 1
+
+;; 5. First-Class Continuations (call/cc)
+(+ 1 (call/cc (lambda (k) (k 5))))  ;; => 6
+
+;; Summary: All mechanisms work!
+(list
+  (symbol? s1)
+  (macro? 'unless)
+  (evaluator? math-dsl)
+  (machine? m))
+```
+
+### Output
+
+```
+=> s1
+=> s2
+=> #t
+=> #t
+=> math-dsl
+=> #t
+=> m
+=> #t
+=> m1
+=> 1
+=> 6
+=> (#t #t #t #t)
+```
+
+**Metadata:**
+- **Input:** Various language-building operations
+- **Output:** Booleans confirming all mechanisms work
+- **Pattern:** Meta-linguistic abstraction for DSL creation
+- **Use Case:** Building custom DSLs, macro systems, debuggers, and language towers
+- **Key Insight:** LLMs can use these primitives to create specialized languages for specific domains, enabling "language games" that match the problem space perfectly
 
 ---
 

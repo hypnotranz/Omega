@@ -680,7 +680,30 @@ export type Val =
   | ResultVal       // Job 008: Solver result
   | CostEstimateVal // Job 008: Cost estimate for solvers
   | SolverVal       // Job 008: First-class solver
-  | FactStoreVal;   // Job 008: Monotone fact store
+  | FactStoreVal    // Job 008: Monotone fact store
+  | EvaluatorVal    // Language building: Custom evaluator
+  | MacroTransformerVal; // Language building: Macro transformer
+
+/**
+ * EvaluatorVal: Custom evaluator with extended primitives.
+ * Enables: make-evaluator, eval-in, extend-evaluator
+ */
+export type EvaluatorVal = {
+  tag: "Evaluator";
+  base?: Val;
+  extensions: Val;
+  primitives: Map<string, Val>;
+};
+
+/**
+ * MacroTransformerVal: Macro transformer procedure.
+ * Enables: make-transformer, register-macro
+ */
+export type MacroTransformerVal = {
+  tag: "MacroTransformer";
+  proc: Val;
+  name: string;
+};
 
 export const VUnit: Val = { tag: "Unit" };
 export const VTrue: Val = { tag: "Bool", b: true };
