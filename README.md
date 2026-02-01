@@ -141,7 +141,14 @@ OPENAI_API_KEY=sk-your-actual-key-here
 npm run omega-fast
 ```
 
-REPL:
+**First thing: Type `:help` to see what you can do:**
+
+```text
+Omega> :help
+# Shows all REPL commands - debugging, sessions, execution control, etc.
+```
+
+Try some examples:
 
 ```text
 Omega> (+ 1 2)
@@ -150,8 +157,8 @@ Omega> (+ 1 2)
 Omega> (effect infer.op "Hello!")
 => "Hi there!"
 
-Omega> :help
-# Shows all REPL commands
+Omega> :state
+# Inspect the full evaluator state (control, environment, store, continuation)
 ```
 
 ---
@@ -236,19 +243,25 @@ npm run manual 8    # Run chapter 8 (debugger demo)
 
 ## REPL Guide
 
+**The REPL is the primary way to use OmegaLLM.** Start here.
+
 ### Starting the REPL
 
 ```bash
-npm run omega-fast           # Fast build, no type checking
+npm run omega-fast           # Recommended: Fast build, no type checking
 npm run omega                # Full build with type checking
 npm run omega-repl           # REPL only (after building)
 ```
+
+**First command you should run: `:help`**
+
+This shows ALL available REPL commands - debugging, execution control, sessions, breakpoints, time travel, and more.
 
 ### REPL Commands Reference
 
 #### Basic Commands
 ```text
-:help, :h              Show all REPL commands
+:help, :h              **RUN THIS FIRST** - Shows all REPL commands
 :quit, :q              Exit the REPL
 :env [name]            Show environment bindings
 :defs                  Show all user definitions
