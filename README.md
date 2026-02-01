@@ -410,6 +410,7 @@ Quick preview of key demos:
 - **[ch08-debugger.lisp](demo/lisp/ch08-debugger.lisp)** - Step-through debugging
 
 ### AI Agent Tools
+- **[agent-security-audit.lisp](demo/lisp/agent-security-audit.lisp)** - 🔥 Map security analysis over entire codebase (vs 100 serial tool calls!)
 - **[ch09-agentic-repl.lisp](demo/lisp/ch09-agentic-repl.lisp)** - Building agents with sessions
 - **[ch13-higher-order-inference.lisp](demo/lisp/ch13-higher-order-inference.lisp)** - LLMs over LLMs
 - **[ch19-conversational-state.lisp](demo/lisp/ch19-conversational-state.lisp)** - Stateful conversations
