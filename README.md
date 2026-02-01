@@ -19,6 +19,7 @@ Omega> (effect infer.op "Hello!")      # Call LLM
 Omega> npm run manual 5                # Run demo (in another terminal)
 ```
 
+**📖 [Demo Index](DEMO-INDEX.md)** — **All 39 demos organized by category** ← Start here!
 **📖 [Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)** — See 49 working demos with live LLM outputs
 **📖 [Full Manual](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/)** — 27 chapters, SICP for LLMs
 
