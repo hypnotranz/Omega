@@ -49,11 +49,23 @@ If most "LLM agents" feel like prompt glue and best‑effort scripts, OmegaLLM i
 - **Breakpoints**: Stop on step count, expression type, or effect operations
 - **Session snapshots**: Save/restore entire evaluator state
 
-### 🤖 **AI Agent-Friendly**
-- **Sessioned evaluation**: Persistent state across discrete tool calls
-- **Named workspaces**: Multiple isolated environments (like tmux for code)
-- **Effect system**: LLM calls, file I/O, and tools are reified boundaries
-- **Multi-shot search**: Generate and validate multiple candidates
+### 🤖 **Perfect for AI Agents**
+
+Why AI agents love OmegaLLM:
+
+- **Persistent sessions** — Your definitions, functions, and state survive across tool calls. The agent sees exactly what programs you've already written in the session. No need to re-explain context every time.
+
+- **Query the runtime** — The Oracle can evaluate subexpressions, inspect the environment, and get actual runtime values before responding. Not a one-shot completion—an **interactive coroutine** that reasons about live code.
+
+- **Traceable execution** — Every step recorded with full provenance. The agent can inspect what happened, debug failures, and understand exactly where things went wrong. Complete audit trail of every LLM call and effect.
+
+- **Deterministic replay** — Same inputs = same outputs. Agents can confidently retry failed operations knowing the behavior is reproducible. Save session snapshots and restore them later.
+
+- **Session isolation** — Multiple named workspaces (`omega --session agent1`, `omega --session agent2`). Like tmux for code—work on different tasks without interference.
+
+- **Effect boundaries** — LLM calls are reified as `(effect infer.op ...)`. Clean separation between computation and inference. Budget enforcement. Policy compliance.
+
+- **Interactive debugging** — Step through execution (`:step`), set breakpoints, inspect state at any point (`:state`). Time travel (`:back`, `:goto`). Agents can diagnose issues systematically.
 
 ### 🧩 **SICP-Style Primitives**
 - **Higher-order functions**: map, filter, fold, streams
