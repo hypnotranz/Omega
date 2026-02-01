@@ -43,6 +43,7 @@
     "demo": "echo '\n🚀 OMEGALLM SHOWCASE - Multiple killer features in one demo!\n' && npx tsx bin/manual-runner.ts 0",
     "demo-instant": "npx tsx bin/omega-repl.ts --file demo/lisp/ch00-instant-showcase.lisp",
     "demo-dsl": "npx tsx bin/omega-repl.ts --file demo/lisp/language-building.lisp",
+    "demo:testgen": "npx tsx bin/omega-repl.ts --file demo/lisp/intelligent-test-generator.lisp",
     "example": "npm run demo",
     "prepublishOnly": "npm run build && npm test"
   },
