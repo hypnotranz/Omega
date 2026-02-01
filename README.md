@@ -2,8 +2,6 @@
 
 > **A governed, replayable semantic execution runtime for AI agents**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
 **OmegaLLM is a governed, replayable semantic execution runtime.**
 It *looks* like a small Lisp dialect, but the product value is the **kernel**: a controlled evaluator (step machine) where **LLM/tool calls are reified effects**, executions produce **receipts**, and runs are **debuggable, budgeted, policy‑enforced, and replayable**.
 
@@ -655,7 +653,9 @@ We welcome contributions! Please:
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details
+Copyright © 2026 hypnotranz. All Rights Reserved.
+
+See [LICENSE](LICENSE) file for details.
 
 ---
 
