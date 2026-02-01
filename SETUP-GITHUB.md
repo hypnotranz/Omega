@@ -29,7 +29,7 @@ cd OmegaLLM
 git remote remove origin
 
 # Add new GitHub remote
-git remote add origin https://github.com/hypnotranz/OmegaLLM.git
+git remote add origin https://github.com/hypnotranz/Omega.git
 
 # Verify
 git remote -v
@@ -47,11 +47,11 @@ git push -u origin main
 
 ### 4. Verify
 
-Check that everything is at: https://github.com/hypnotranz/OmegaLLM
+Check that everything is at: https://github.com/hypnotranz/Omega
 
 ## Already Updated Files
 
-✅ README.md - All links point to github.com/hypnotranz/OmegaLLM
+✅ README.md - All links point to github.com/hypnotranz/Omega
 ✅ package.json - Repository field added
 ✅ .gitignore - .env and experimental/ excluded
 

@@ -43,12 +43,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/hypnotranz/OmegaLLM.git"
+    "url": "https://github.com/hypnotranz/Omega.git"
   },
   "bugs": {
-    "url": "https://github.com/hypnotranz/OmegaLLM/issues"
+    "url": "https://github.com/hypnotranz/Omega/issues"
   },
-  "homepage": "https://github.com/hypnotranz/OmegaLLM#readme",
+  "homepage": "https://github.com/hypnotranz/Omega#readme",
   "keywords": [
     "lisp",
     "llm",

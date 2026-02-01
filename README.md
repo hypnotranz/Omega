@@ -15,7 +15,7 @@ If most "LLM agents" feel like prompt glue and best‑effort scripts, OmegaLLM i
 => "4"
 ```
 
-**Repository**: [github.com/hypnotranz/OmegaLLM](https://github.com/hypnotranz/OmegaLLM)
+**Repository**: [github.com/hypnotranz/Omega](https://github.com/hypnotranz/Omega)
 
 **📖 [Read the Manual](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/)** — SICP for the Age of Language Models (27 chapters)
 **🎨 [Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)** — All 49 demos with live outputs
@@ -664,8 +664,8 @@ MIT License - see [LICENSE](LICENSE) file for details
 - **📖 User Manual**: [Structure and Interpretation of Linguistic Programs](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/)
 - **🎨 Demo Gallery**: [All 49 demos with outputs](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)
 - **🏗️ Architecture Docs**: [ARCHITECTURE/](ARCHITECTURE/) (50+ specs for developers)
-- **💬 Issues**: [GitHub Issues](https://github.com/hypnotranz/OmegaLLM/issues)
-- **🗣️ Discussions**: [GitHub Discussions](https://github.com/hypnotranz/OmegaLLM/discussions)
+- **💬 Issues**: [GitHub Issues](https://github.com/hypnotranz/Omega/issues)
+- **🗣️ Discussions**: [GitHub Discussions](https://github.com/hypnotranz/Omega/discussions)
 
 ---
 
