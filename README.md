@@ -1,22 +1,66 @@
 # OmegaLLM
 
-> **A governed, replayable semantic execution runtime for AI agents**
+> **A REPL where LLM calls are first-class operations and state persists across sessions.**
 
-## ⚡ TL;DR - Get Running in 60 Seconds
+## What This Solves
+
+Most LLM agent frameworks have these problems:
+
+- Context resets every call - agents lose memory between operations
+- Python/Node REPLs don't persist - close the terminal, lose all state
+- File I/O dominates - constant serialization instead of in-memory work
+- Manual retry logic - if/else chains for every potential failure
+- No debugger - can't step through LLM chains or see what went wrong
+
+OmegaLLM addresses this with:
+
+- **Persistent sessions**: Data structures stay in memory across tool calls and crashes
+- **Parallel operations**: Write `(map function list)` instead of serial loops
+- **Auto-backtracking**: `(amb ...)` + `(require ...)` automatically tries options until one works
+- **Full debugger**: Step through execution, set breakpoints, time-travel to any step
+- **Deterministic replay**: Same inputs produce same outputs, every LLM call has receipts
+
+```lisp
+;; Traditional agent: 100 serial tool calls, loses context
+for file in files:
+    content = read_file(file)
+    result = llm_analyze(content)
+
+;; OmegaLLM: one parallel expression, state persists
+(map (lambda (file)
+       (let ((content (effect file.read.op file)))
+         (effect infer.op (list "Analyze: " content))))
+     files)
+```
+
+### Example: Persistent State Across Tool Calls
+
+Most frameworks lose state between calls. OmegaLLM keeps it:
+
+```bash
+# Session 1: Build up analysis, save it
+$ npm run omega-fast
+Omega> (define files (list "auth.ts" "db.ts" "api.ts"))
+Omega> (define analysis (map analyze-file files))
+Omega> :session save code-review
+Omega> :quit
+
+# Session 2: Hours later, pick up where you left off
+$ npm run omega-fast
+Omega> :session load code-review
+Omega> :session goto 5         # Restore environment
+Omega> analysis                 # Still there!
+=> ((auth.ts issues: [...]) (db.ts issues: [...]) ...)
+```
+
+No serialization to files. No context reconstruction. Just persistent in-memory state.
+
+## ⚡ Get Running in 60 Seconds
 
 ```bash
 npm install && npm run build          # Install & build
 echo "OPENAI_API_KEY=sk-..." > .env   # Add your API key
-npm run omega-fast                     # Start REPL
-```
-
-```text
-Omega> :help                           # SEE ALL COMMANDS FIRST
-Omega> (+ 1 2)                         # Basic math
-=> 3
-Omega> (effect infer.op "Hello!")      # Call LLM
-=> "Hi there!"
-Omega> npm run manual 5                # Run demo (in another terminal)
+npm run demo                           # See all killer features
 ```
 
 **📖 [Demo Index](DEMO-INDEX.md)** — **All 39 demos organized by category** ← Start here!
@@ -27,16 +71,9 @@ Omega> npm run manual 5                # Run demo (in another terminal)
 
 ## What Is This?
 
-**OmegaLLM is a governed, replayable semantic execution runtime.**
-It *looks* like a small Lisp dialect, but the product value is the **kernel**: a controlled evaluator (step machine) where **LLM/tool calls are reified effects**, executions produce **receipts**, and runs are **debuggable, budgeted, policy‑enforced, and replayable**.
+**OmegaLLM is a REPL where LLM calls are first-class operations** and **state persists across sessions.**
 
-If most "LLM agents" feel like prompt glue and best‑effort scripts, OmegaLLM is the opposite: **structured computation over semantic primitives** (LLM-backed generators/predicates), with SICP‑style decomposition, validation, search, and recursion.
-
-```lisp
-;; LLM inference is not an ad-hoc API call; it's an effect boundary.
-(effect infer.op "What is 2+2?")
-=> "4"
-```
+Instead of writing glue code that loses context every call, you write **programs** using SICP patterns (map, filter, streams, backtracking) over LLM operations. The runtime handles parallelization, retry, budgeting, and debugging.
 
 **Repository**: [github.com/hypnotranz/Omega](https://github.com/hypnotranz/Omega)
 
