@@ -678,6 +678,12 @@ function applyFrame(fr: Frame, v: Val, st: State): StepOutcome {
 
     case "KStreamToListRest": {
       // v is the forced stream (or next element after forcing)
+      // If we have a pending promise, memoize the result
+      if (fr.pendingPromise) {
+        const p = fr.pendingPromise as any;
+        p.forced = true;
+        p.value = v;
+      }
       // Continue collecting from this stream
       const stream = v as any;
       const items = [...fr.acc];
@@ -769,6 +775,26 @@ function applyFrame(fr: Frame, v: Val, st: State): StepOutcome {
 
             const kont2 = push(push(st.kont, contFrame), buildFrame);
             return applyVal(smThunk.fn, [nextHead], { ...st, kont: kont2, env: fr.env });
+          } else if (tail.thunk.tag === "Closure") {
+            // Closure thunk - push frame and evaluate
+            const thunk = tail.thunk;
+            const contFrame: Frame = {
+              tag: "KStreamToListRest",
+              remaining,
+              acc: items,
+              env: fr.env,
+              pendingPromise: tail, // For memoization
+            };
+            const kont2 = push(st.kont, contFrame);
+            return {
+              tag: "State",
+              state: {
+                ...st,
+                control: { tag: "Expr", e: thunk.body },
+                env: thunk.env,
+                kont: kont2,
+              },
+            };
           } else {
             break;
           }

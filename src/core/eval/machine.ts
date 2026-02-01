@@ -41,7 +41,7 @@ export type Frame =
   | { tag: "KFoldRest"; fn: Val; remaining: Val[]; env: Env }
   // Stream continuations for closure support
   | { tag: "KStreamMapHead"; fn: Val; streamTail: Val; env: Env }
-  | { tag: "KStreamToListRest"; remaining: number; acc: Val[]; env: Env };
+  | { tag: "KStreamToListRest"; remaining: number; acc: Val[]; env: Env; pendingPromise?: Val };
 
 export type HandlerFrame = {
   hid: string;

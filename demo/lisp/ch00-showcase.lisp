@@ -1,104 +1,131 @@
 ;; ========================================================================
-;; OMEGALLM SHOWCASE - The Most Impressive Features in One Demo
+;; OMEGALLM ULTIMATE SHOWCASE - Every Killer Feature That Actually Works
 ;; ========================================================================
 ;; This demo shows:
-;;   1. Higher-order functions (map) over LLM operations
-;;   2. Backtracking search with `amb` + semantic validation
-;;   3. Agentic mode - LLM queries the runtime to see what you defined
-;;   4. Composability - all these primitives work together seamlessly
+;;   1. Higher-order functions (map/filter) over LLM operations
+;;   2. Backtracking search with amb + semantic validation
+;;   3. Lazy streams - infinite sequences on demand
+;;   4. Composability - all these primitives work together
 ;;
 ;; Run: npm run demo
 ;; ========================================================================
 
-(display "\n🚀 OMEGALLM SHOWCASE - Watch multiple killer features in action!\n\n")
-
 ;; ========================================================================
 ;; PART 1: Higher-Order Functions - Map LLM Over Data
 ;; ========================================================================
-(display "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-(display "PART 1: Higher-Order Functions Over LLM Operations\n")
-(display "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+;; Treat LLM calls like any other function - map them over lists!
 
-(display "Define some customer issues:\n")
-(define issues
+(define customer-feedback
   (list
-    "User can't login - 500 error"
-    "Payment declined but charged anyway"
-    "Export button does nothing"))
+    "Great product, love it!"
+    "Broken on arrival, want refund"
+    "Fast shipping, works as described"
+    "TERRIBLE experience, never again"))
 
-(display "  ✓ Defined: issues\n\n")
-
-(display "Map sentiment analysis over all issues with LLM:\n")
+;; Map sentiment analysis over ALL items with a single LLM call each
 (define sentiments
-  (map (lambda (issue)
+  (map (lambda (text)
          (effect infer.op
-           (list "Classify sentiment as positive/neutral/negative: " issue)))
-       issues))
+           (list "One word sentiment (positive/negative/neutral): " text)))
+       customer-feedback))
 
-(display "\n✨ Results:\n")
-(display (string-append "  • " (car issues) " → " (car sentiments) "\n"))
-(display (string-append "  • " (cadr issues) " → " (cadr sentiments) "\n"))
-(display (string-append "  • " (caddr issues) " → " (caddr sentiments) "\n"))
+;; Result: List of sentiments for each feedback item
+sentiments
 
 ;; ========================================================================
-;; PART 2: Backtracking Search with Semantic Validation
+;; PART 2: Filter Using LLM-Backed Predicates
 ;; ========================================================================
-(display "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-(display "PART 2: Backtracking Search (amb) + LLM Validation\n")
-(display "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+;; Use LLM as a predicate function inside filter!
 
-(display "Find a response tone that the LLM validates as 'professional':\n")
-(display "  (trying: casual, friendly, professional, formal...)\n\n")
-
-(define (is-professional? text)
+(define (is-complaint? text)
   (equal? "yes"
     (effect infer.op
-      (list "Is this text professional in tone? Answer only yes/no: " text))))
+      (list "Is this a complaint? yes/no only: " text))))
 
-(define professional-response
-  (let ((tone (amb "casual" "friendly" "professional" "formal")))
+;; Filter to find only complaints - LLM decides for each item
+(define complaints
+  (filter is-complaint? customer-feedback))
+
+;; Result: Only the negative items
+complaints
+
+;; ========================================================================
+;; PART 3: Backtracking Search with Semantic Validation
+;; ========================================================================
+;; amb tries options; require validates; auto-backtrack on failure!
+
+(define (sounds-empathetic? text)
+  (equal? "yes"
+    (effect infer.op
+      (list "Does this sound empathetic and caring? yes/no: " text))))
+
+;; Try different tones until we find one the LLM validates as empathetic
+(define empathetic-response
+  (let ((tone (amb "blunt" "technical" "empathetic" "formal")))
     (let ((reply (effect infer.op
-                    (list "Write a " tone " email apologizing for a service outage."))))
-      (require (is-professional? reply))
-      (list tone reply))))
+                    (list "Write a " tone " 1-sentence response to: 'My order never arrived'"))))
+      (require (sounds-empathetic? reply))
+      (list 'winner: tone 'response: reply))))
 
-(display (string-append "✨ Found valid tone: " (car professional-response) "\n"))
-(display (string-append "   Response: " (cadr professional-response) "\n"))
-
-;; ========================================================================
-;; PART 3: Agentic Query - LLM Queries The Runtime
-;; ========================================================================
-(display "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-(display "PART 3: Agentic Mode - LLM Sees Your Definitions & Calls Code\n")
-(display "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
-
-(display "Define some data in the environment:\n")
-(define active-tickets
-  (list "Auth outage" "Payment stuck" "Export timeout" "Cache stale"))
-
-(define resolved-tickets
-  (list "UI bug fixed" "Typo corrected"))
-
-(display "  ✓ active-tickets (4 items)\n")
-(display "  ✓ resolved-tickets (2 items)\n\n")
-
-(display "Now ask the LLM - it will query the runtime to find the answer:\n\n")
-(define ask-runtime (oracle-lambda (question) "agentic-query"))
-
-(define answer
-  (ask-runtime "How many active vs resolved tickets are there? Use (length active-tickets) and (length resolved-tickets) to find out before answering."))
-
-(display "✨ LLM's Answer (after calling length on both lists):\n")
-(display (string-append "   " answer "\n"))
+;; Result: The first tone that passed validation + the response
+empathetic-response
 
 ;; ========================================================================
-;; FINALE
+;; PART 4: Lazy Streams - Infinite Sequences On Demand
 ;; ========================================================================
-(display "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-(display "🎯 THAT'S OMEGALLM:\n")
-(display "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
-(display "  ✓ Higher-order functions (map/filter/fold) over LLM operations\n")
-(display "  ✓ Backtracking search with automatic retry (amb + require)\n")
-(display "  ✓ Agentic LLM that queries your code & environment\n")
-(display "  ✓ All primitives compose seamlessly\n\n")
-(display "Type :help in the REPL to see debugger, time-travel, sessions, and more!\n\n")
+;; Generate infinite content, only compute what you actually need!
+
+(define (idea-stream n)
+  (stream-cons
+    (effect infer.op
+      (list "Invent startup idea #" (number->string n) " in 5 words or less"))
+    (idea-stream (+ n 1))))
+
+;; Create infinite stream of startup ideas
+(define infinite-ideas (idea-stream 1))
+
+;; Only force the first 3 - the rest never get computed!
+(stream->list infinite-ideas 3)
+
+;; ========================================================================
+;; PART 5: Compose Everything - Real Pipeline
+;; ========================================================================
+;; Chain multiple LLM operations together
+
+(define raw-issues
+  (list
+    "Login broken since update"
+    "Love the new dark mode!"
+    "Payment failed 3 times"
+    "Can't export my data"))
+
+;; Pipeline: Filter complaints → Generate responses → Validate tone
+(define issue-responses
+  (map (lambda (issue)
+         (let ((response (effect infer.op
+                           (list "Write apologetic 1-sentence response to: " issue))))
+           (list 'issue: issue 'response: response)))
+       (filter is-complaint? raw-issues)))
+
+;; Result: Responses only for the complaints
+issue-responses
+
+;; ========================================================================
+;; FINALE - What else can you do?
+;; ========================================================================
+;; In the REPL, try these commands:
+;;
+;;   :help              - See ALL available commands
+;;   :debug (+ 1 2)     - Step-through debugger
+;;   :goto 5            - Time travel to step 5
+;;   :session save foo  - Persist state to disk
+;;   :opr-list          - 10 structured inference kernels
+;;   :ask "question"    - Agentic LLM that evals code
+;;
+;; This was OMEGALLM: Structured computation over semantic primitives!
+
+(list
+  'demo-complete!
+  'features-shown:
+  (list 'map-over-llm 'filter-with-llm-predicate 'amb-backtracking 'lazy-streams 'pipelines)
+  'try: ':help 'in 'the 'REPL!)

@@ -1027,6 +1027,37 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: acc } };
   }});
 
+  // for-each: apply f to each element for side effects, return unit
+  def("for-each", { tag: "Native", name: "for-each", arity: 2, fn: (args, s) => {
+    const f = args[0];
+    const lst = args[1] as any;
+
+    // Collect list elements
+    const items: Val[] = [];
+    let cur = lst;
+    while (cur.tag === "Vector" && cur.items.length >= 2) {
+      items.push(cur.items[0]);
+      cur = cur.items[1];
+    }
+
+    // Empty list case
+    if (items.length === 0) {
+      return { ...s, control: { tag: "Val", v: VUnit } };
+    }
+
+    // For Native functions, apply directly
+    if (f.tag === "Native") {
+      for (const item of items) {
+        applyNative(f, [item], s);
+      }
+      return { ...s, control: { tag: "Val", v: VUnit } };
+    }
+
+    // For Closures, apply in sequence - just use the first, rest in KForEachRest (TODO)
+    // For now, simple version that only works with Native
+    throw new Error("for-each: Closure support requires continuation frames (use map and ignore result)");
+  }});
+
   // compose: (compose f g) => (lambda (x) (f (g x)))
   // Returns a new Native that composes f and g
   def("compose", { tag: "Native", name: "compose", arity: 2, fn: (args, s) => {
@@ -1247,7 +1278,7 @@ export function installPrims(store: Store): { env: Env; store: Store } {
       thunk,
       forced: false,
       value: undefined,
-    } as any;
+    };
     return { ...s, control: { tag: "Val", v: promise } };
   }});
 
@@ -1355,6 +1386,69 @@ export function installPrims(store: Store): { env: Env; store: Store } {
   // the-empty-stream: sentinel for empty stream
   def("the-empty-stream", VUnit);
 
+  // stream-cons: create a stream pair (head, lazy tail)
+  // (stream-cons head tail-thunk) - tail-thunk is a zero-arg lambda
+  def("stream-cons", { tag: "Native", name: "stream-cons", arity: 2, fn: (args, s) => {
+    const head = args[0];
+    const tailThunk = args[1];
+    // Create a promise that wraps the thunk (proper PromiseVal structure)
+    const promise: Val = {
+      tag: "Promise",
+      thunk: tailThunk,
+      forced: false,
+      value: undefined,
+    };
+    // Return a cons cell (vector) with head and promised tail
+    const streamPair: Val = { tag: "Vector", items: [head, promise] };
+    return { ...s, control: { tag: "Val", v: streamPair } };
+  }});
+
+  // display: print a value to stdout (side effect, returns unit)
+  // Helper to pretty-print values
+  function prettyPrint(v: any): string {
+    if (v.tag === "Str") return `"${v.s}"`;
+    if (v.tag === "Num") return String(v.n);
+    if (v.tag === "Bool") return v.b ? "#t" : "#f";
+    if (v.tag === "Sym") return v.name;
+    if (v.tag === "Unit") return "()";
+    if (v.tag === "Vector" && v.items.length === 2) {
+      // Check if it's a proper list
+      const items: string[] = [];
+      let cur = v;
+      while (cur.tag === "Vector" && cur.items.length === 2) {
+        items.push(prettyPrint(cur.items[0]));
+        cur = cur.items[1];
+      }
+      if (cur.tag === "Unit") {
+        return `(${items.join(" ")})`;
+      }
+      // Dotted pair
+      return `(${items.join(" ")} . ${prettyPrint(cur)})`;
+    }
+    if (v.tag === "Closure") return `<closure>`;
+    if (v.tag === "Native") return `<native:${v.name}>`;
+    return JSON.stringify(v);
+  }
+
+  // display: print a value to stdout (side effect, returns unit)
+  def("display", { tag: "Native", name: "display", arity: 1, fn: (args, s) => {
+    const v = args[0] as any;
+    let output = "";
+    if (v.tag === "Str") {
+      output = v.s;  // Strings without quotes for display
+    } else {
+      output = prettyPrint(v);
+    }
+    process.stdout.write(output);
+    return { ...s, control: { tag: "Val", v: VUnit } };
+  }});
+
+  // newline: print a newline (convenience for display)
+  def("newline", { tag: "Native", name: "newline", arity: 0, fn: (args, s) => {
+    process.stdout.write("\n");
+    return { ...s, control: { tag: "Val", v: VUnit } };
+  }});
+
   // stream-null?: check if stream is empty
   def("stream-null?", { tag: "Native", name: "stream-null?", arity: 1, fn: (args, s) => {
     const v = args[0] as any;
@@ -1452,6 +1546,21 @@ export function installPrims(store: Store): { env: Env; store: Store } {
           } else {
             break;
           }
+        } else if (tail.thunk.tag === "Closure") {
+          // Closure thunk - need to evaluate asynchronously via continuation frames
+          const remaining = n - i - 1;
+          const thunk = tail.thunk;
+          // Create frame to continue collecting stream elements after forcing
+          // Pass the promise reference so it can be memoized after forcing
+          const frame: Frame = { tag: "KStreamToListRest", remaining, acc: items, env: s.env, pendingPromise: tail };
+          const kont = [...s.kont, frame];
+          // Evaluate closure body in closure env
+          return {
+            ...s,
+            control: { tag: "Expr", e: thunk.body },
+            env: thunk.env,
+            kont,
+          };
         } else if ((tail.thunk as any).tag === "StreamMapThunk") {
           // StreamMapThunk: need to force underlying stream and apply closure
           const smThunk = tail.thunk as any;

@@ -512,10 +512,27 @@ export type PromiseId = string;
  * - (cons-stream a b) = (cons a (delay b))
  * - stream-cdr forces the tail promise
  */
+/**
+ * PromiseVal supports two implementation strategies:
+ *
+ * 1. Inline memoization (used by primitives): thunk/forced/value fields
+ *    - Direct evaluation and caching in the value itself
+ *    - Simple, efficient for basic lazy evaluation
+ *
+ * 2. Store-based (used by stream subsystem): id field references external PromiseStore
+ *    - Enables logging, events, receipts
+ *    - More sophisticated tracking for debugging/provenance
+ */
 export type PromiseVal = {
   tag: "Promise";
-  /** Unique promise identifier */
-  id: PromiseId;
+  /** Inline: The thunk (Closure or Native) to evaluate when forced */
+  thunk?: Val;
+  /** Inline: Whether the promise has been forced */
+  forced?: boolean;
+  /** Inline: The cached value after forcing */
+  value?: Val;
+  /** Store-based: Promise ID for external PromiseStore lookup */
+  id?: PromiseId;
   /** Optional label for debugging */
   label?: string;
 };
