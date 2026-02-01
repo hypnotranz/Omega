@@ -146,6 +146,61 @@ function desugar(form: Form, diagnostics: Diagnostic[]): CoreForm {
         ],
       };
     }
+    case "cond": {
+      // (cond (test1 e1...) (test2 e2...) ... (else en...))
+      // Desugars to nested if: (if test1 (begin e1...) (if test2 (begin e2...) ...))
+      if (args.length === 0) {
+        // Empty cond returns #f
+        return quoteLiteral(literalAtom(false, form.meta), form.meta);
+      }
+
+      // Process clauses from right to left to build nested if
+      let result: CoreForm = quoteLiteral(literalAtom(false, form.meta), form.meta); // default: #f if no else
+
+      for (let i = args.length - 1; i >= 0; i--) {
+        const clause = args[i];
+        if (!clause.children || clause.children.length === 0) {
+          diagnostics.push(errorDiag(ERR_UNKNOWN, "cond: empty clause", { span: clause.meta?.span }));
+          continue;
+        }
+
+        const testForm = clause.children[0];
+        const bodyForms = clause.children.slice(1);
+
+        // Check for 'else' clause
+        const isElse = testForm.tag === "Symbol" && String(testForm.value) === "else";
+
+        if (isElse) {
+          // (else e1 e2 ...) → (begin e1 e2 ...)
+          if (bodyForms.length === 0) {
+            result = quoteLiteral(literalAtom(null, form.meta), form.meta); // unit
+          } else if (bodyForms.length === 1) {
+            result = desugar(bodyForms[0], diagnostics);
+          } else {
+            result = { tag: "begin", meta: metaFor(clause), args: bodyForms.map(b => desugar(b, diagnostics)) };
+          }
+        } else {
+          // (test e1 e2 ...) → (if test (begin e1 e2 ...) <rest>)
+          let body: CoreForm;
+          if (bodyForms.length === 0) {
+            // (test) with no body - return test value (like Scheme)
+            body = desugar(testForm, diagnostics);
+          } else if (bodyForms.length === 1) {
+            body = desugar(bodyForms[0], diagnostics);
+          } else {
+            body = { tag: "begin", meta: metaFor(clause), args: bodyForms.map(b => desugar(b, diagnostics)) };
+          }
+
+          result = {
+            tag: "branch",
+            meta: metaFor(clause),
+            args: [desugar(testForm, diagnostics), body, result],
+          };
+        }
+      }
+
+      return result;
+    }
     default:
       diagnostics.push(errorDiag(ERR_UNKNOWN, `Unknown form: ${headSym ?? head.tag}`, { span: form.meta.span }));
       return quoteLiteral(literal(form), metaFor(form));

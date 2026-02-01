@@ -3,10 +3,12 @@
 
 import path from "path";
 import { pathToFileURL } from "url";
+import fs from "fs";
 import { OmegaRuntime } from "../../src/runtime";
 import type { Val, ListVal } from "../../src/core/eval/values";
 import type { OracleAdapter, OracleInit } from "../../src/core/oracle/adapter";
 import type { OracleSession } from "../../src/core/oracle/protocol";
+import { meaning } from "../../src/core/oracle/meaning";
 import type {
   DemoContext,
   DemoDefinition,
@@ -15,6 +17,26 @@ import type {
   InvariantSpec,
   InvariantResult,
 } from "../harness/types";
+
+// -----------------------------------------------------------------
+// File Loading Helper
+// -----------------------------------------------------------------
+
+/**
+ * Load Lisp code from a file in the manual's lisp directory.
+ * @param filename - Filename like "ch16-symbolic-semantic.lisp"
+ * @returns The file contents as a string
+ */
+export function loadLispFile(filename: string): string {
+  const manualDir = path.join(__dirname, "..", "..", "MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS", "lisp");
+  const filepath = path.join(manualDir, filename);
+
+  if (!fs.existsSync(filepath)) {
+    throw new Error(`Lisp file not found: ${filepath}`);
+  }
+
+  return fs.readFileSync(filepath, "utf-8");
+}
 
 // -----------------------------------------------------------------
 // Oracle Adapter that forwards to the demo harness oracle
@@ -68,6 +90,34 @@ function jsToVal(value: unknown): Val {
   return { tag: "Str", s: String(value) };
 }
 
+/**
+ * Check if a Vector is a cons cell (2 items: car and cdr)
+ */
+function isConsList(val: Val): boolean {
+  return val.tag === "Vector" && (val as any).items?.length === 2;
+}
+
+/**
+ * Convert a cons-cell list to a flat JavaScript array
+ */
+function consListToArray(val: Val): unknown[] {
+  const result: unknown[] = [];
+  let current = val;
+
+  while (isConsList(current)) {
+    const items = (current as any).items;
+    result.push(valToNative(items[0]));
+    current = items[1];
+  }
+
+  // Handle non-null terminator
+  if (current.tag !== "Unit") {
+    result.push(valToNative(current));
+  }
+
+  return result;
+}
+
 export function valToNative(value: Val): unknown {
   switch (value.tag) {
     case "Str":
@@ -83,6 +133,11 @@ export function valToNative(value: Val): unknown {
     case "List":
       return value.elements.map(valToNative);
     case "Vector":
+      // Check if this is a cons-cell list created by (list ...)
+      if (isConsList(value)) {
+        return consListToArray(value);
+      }
+      // Otherwise treat as a regular flat vector
       return value.items.map(valToNative);
     case "Map":
       return Object.fromEntries(value.entries.map(([k, v]) => [valToNative(k), valToNative(v)]));
@@ -119,8 +174,9 @@ class DemoOracleAdapter implements OracleAdapter {
         const resp = ctx.oracle.handle("InferOp", req) as any;
         const denotation = jsToVal(resp?.value ?? resp ?? { tag: "Unit" });
         ctx.ledger.record("infer.result", { value: denotation });
-        yield { tag: "ReqReturn", result: denotation };
-        return denotation;
+        const result = meaning({ denotation });
+        yield { tag: "ReqReturn", result };
+        return result;
       })();
     }
 
@@ -133,8 +189,9 @@ class DemoOracleAdapter implements OracleAdapter {
       const resp = ctx.oracle.handle("InferOp", req) as any;
       const denotation = jsToVal(resp?.value ?? resp ?? { tag: "Unit" });
       ctx.ledger.record("oracle.response", { op: spec, value: denotation });
-      yield { tag: "ReqReturn", result: denotation };
-      return denotation;
+      const result = meaning({ denotation });
+      yield { tag: "ReqReturn", result };
+      return result;
     })();
   }
 }
@@ -272,7 +329,8 @@ export function registerCommonOracleScripts(ctx: DemoContext): void {
 
 export type ChapterProgram = {
   label: string;
-  code: string;
+  code?: string;  // Embedded code string (legacy)
+  codeFile?: string;  // Path to .lisp file relative to manual/lisp/ (new preferred way)
 };
 
 export type ChapterConfig = {
@@ -297,7 +355,16 @@ export function createChapterDemo(config: ChapterConfig): DemoDefinition {
     const outputs: unknown[] = [];
 
     for (const program of config.programs) {
-      const result = await omega.eval(`(begin ${program.code})`);
+      // Load code from file if codeFile is specified, otherwise use embedded code
+      const code = program.codeFile
+        ? loadLispFile(program.codeFile)
+        : program.code;
+
+      if (!code) {
+        throw new Error(`Program "${program.label}" has neither code nor codeFile specified`);
+      }
+
+      const result = await omega.eval(`(begin ${code})`);
       if (!result.ok) {
         throw new Error(`Program "${program.label}" failed: ${result.error}`);
       }

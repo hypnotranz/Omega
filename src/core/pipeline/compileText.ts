@@ -4,7 +4,7 @@
 import { tokenize } from "../reader/tokenize";
 import { parseAll } from "../reader/parse";
 import { datumToSyntax } from "../reader/toSyntax";
-import type { Syntax, SIdent, SList } from "../syntax/syntax";
+import type { Syntax, SIdent, SList, Scope } from "../syntax/syntax";
 import { isIdent, isList, addScope, freshScope } from "../syntax/syntax";
 import type { Binding, Env } from "../syntax/binding";
 import { resolveIdent } from "../syntax/binding";
@@ -253,9 +253,17 @@ function expandExpr(stx: Syntax, env: Env, c: Counters): ExpandRes {
     }
 
     case "if": {
-      if (stx.items.length !== 4) throw new Error("if: expected (if test conseq alt)");
+      // Allow single-branch if: (if test conseq) => (if test conseq #f)
+      if (stx.items.length < 3 || stx.items.length > 4) {
+        throw new Error("if: expected (if test conseq) or (if test conseq alt)");
+      }
       const r1 = expandExpr(stx.items[1], env, c);
       const r2 = expandExpr(stx.items[2], r1.env, c);
+      if (stx.items.length === 3) {
+        // Single-branch: add implicit #f
+        const falseLit: Syntax = { tag: "Atom", scopes: [], value: false };
+        return { stx: { ...stx, items: [h, r1.stx, r2.stx, falseLit] }, env: r2.env };
+      }
       const r3 = expandExpr(stx.items[3], r2.env, c);
       return { stx: { ...stx, items: [h, r1.stx, r2.stx, r3.stx] }, env: r3.env };
     }
@@ -271,6 +279,9 @@ function expandExpr(stx: Syntax, env: Env, c: Counters): ExpandRes {
 
     case "letrec":
       return expandLetrec(stx, env, c);
+
+    case "let*":
+      return expandLetStar(stx, env, c);
 
     case "set!": {
       if (stx.items.length !== 3) throw new Error("set!: expected (set! x rhs)");
@@ -411,7 +422,7 @@ function expandLambda(stx: SList, env: Env, c: Counters): ExpandRes {
   // (lambda (x ...) body...)
   if (stx.items.length < 3) throw new Error("lambda: expected (lambda (params) body...)");
   const paramsList = expectList(stx.items[1], "lambda: params must be list");
-  const bodyForms = stx.items.slice(2);
+  let bodyForms = stx.items.slice(2);
 
   const B = freshScope(c.scope);
 
@@ -424,6 +435,80 @@ function expandLambda(stx: SList, env: Env, c: Counters): ExpandRes {
   for (const p of paramsB) {
     const bid = freshBid(c);
     Γ = bindValue(Γ, p, bid, internalName(p.name, bid));
+  }
+
+  // Handle internal defines: (lambda (x) (define (f y) ...) body...)
+  // Transform to: (lambda (x) (letrec ((f (lambda (y) ...))) body...))
+  // Note: We allow internal defines ANYWHERE in the body (not just at start)
+  // All defines are hoisted to a letrec at the start.
+  const internalDefines: Syntax[] = [];
+  const remainingBody: Syntax[] = [];
+
+  for (const form of bodyForms) {
+    if (isList(form) && headName(form) === "define") {
+      internalDefines.push(form);
+    } else {
+      remainingBody.push(form);
+    }
+  }
+
+  // If we have internal defines, wrap in letrec
+  if (internalDefines.length > 0) {
+    // Convert each (define (f x) body) or (define f expr) to binding
+    const bindings: Syntax[] = internalDefines.map(def => {
+      const defList = def as SList;
+      const target = defList.items[1];
+
+      if (isList(target)) {
+        // (define (f x) body...) -> [f, (lambda (x) body...)]
+        const sig = target as SList;
+        const fname = sig.items[0];
+        const params = sig.items.slice(1);
+        const defBody = defList.items.slice(2);
+
+        const lambda: Syntax = {
+          tag: "List",
+          scopes: defList.scopes,
+          items: [
+            { tag: "Ident", name: "lambda", scopes: defList.scopes },
+            { tag: "List", scopes: [], items: params },
+            ...defBody,
+          ],
+        };
+
+        return {
+          tag: "List",
+          scopes: [],
+          items: [fname, lambda],
+        } as Syntax;
+      } else {
+        // (define f expr) -> [f, expr]
+        return {
+          tag: "List",
+          scopes: [],
+          items: [target, defList.items[2]],
+        } as Syntax;
+      }
+    });
+
+    // Build letrec: (letrec ((f lambda) ...) remaining-body...)
+    const letrecBindings: Syntax = {
+      tag: "List",
+      scopes: [],
+      items: bindings,
+    };
+
+    const letrecForm: SList = {
+      tag: "List",
+      scopes: stx.scopes,
+      items: [
+        { tag: "Ident", name: "letrec", scopes: stx.scopes },
+        letrecBindings,
+        ...remainingBody,
+      ],
+    };
+
+    bodyForms = [letrecForm];
   }
 
   // Add binder scope to body BEFORE expanding
@@ -485,8 +570,15 @@ function expandOracleLambda(stx: SList, env: Env, c: Counters): ExpandRes {
 }
 
 function expandLet(stx: SList, env: Env, c: Counters): ExpandRes {
-  // (let ((x e) ...) body...)
+  // (let ((x e) ...) body...) OR (let name ((x e) ...) body...)
   if (stx.items.length < 3) throw new Error("let: expected (let ((x e) ...) body...)");
+
+  // Check for named let: (let name ((x e) ...) body...)
+  const maybeNamedLet = isIdent(stx.items[1]);
+  if (maybeNamedLet) {
+    return expandNamedLet(stx, env, c);
+  }
+
   const bindsList = expectList(stx.items[1], "let: bindings must be list");
   const bodyForms = stx.items.slice(2);
 
@@ -543,6 +635,66 @@ function expandLet(stx: SList, env: Env, c: Counters): ExpandRes {
   return { stx: stx2, env: Γ2 };
 }
 
+function expandNamedLet(stx: SList, env: Env, c: Counters): ExpandRes {
+  // (let name ((x e) ...) body...)
+  // Desugars to: (letrec ((name (lambda (x ...) body...))) (name e ...))
+  if (stx.items.length < 4) throw new Error("named let: expected (let name ((x e) ...) body...)");
+
+  const loopName = stx.items[1] as SIdent;
+  const bindsList = expectList(stx.items[2], "named let: bindings must be list");
+  const bodyForms = stx.items.slice(3);
+
+  // Extract variable names and init expressions
+  const vars: SIdent[] = [];
+  const inits: Syntax[] = [];
+
+  for (const bp of bindsList.items) {
+    const pair = expectList(bp, "named let: binding must be list");
+    if (pair.items.length !== 2) throw new Error("named let: binding must be (x init)");
+    vars.push(expectIdent(pair.items[0], "named let: binder must be ident"));
+    inits.push(pair.items[1]);
+  }
+
+  // Build lambda: (lambda (x ...) body...)
+  const lambdaForm: Syntax = {
+    tag: "List",
+    scopes: stx.scopes,
+    items: [
+      { tag: "Ident", name: "lambda", scopes: stx.scopes },
+      { tag: "List", scopes: [], items: vars },
+      ...bodyForms,
+    ],
+  };
+
+  // Build letrec binding: ((name (lambda ...)))
+  const letrecBinding: Syntax = {
+    tag: "List",
+    scopes: [],
+    items: [loopName, lambdaForm],
+  };
+
+  // Build application: (name e ...)
+  const appForm: Syntax = {
+    tag: "List",
+    scopes: stx.scopes,
+    items: [loopName, ...inits],
+  };
+
+  // Build letrec: (letrec ((name (lambda ...))) (name e ...))
+  const letrecForm: SList = {
+    tag: "List",
+    scopes: stx.scopes,
+    items: [
+      { tag: "Ident", name: "letrec", scopes: stx.scopes },
+      { tag: "List", scopes: [], items: [letrecBinding] },
+      appForm,
+    ],
+  };
+
+  // Expand the letrec form
+  return expandLetrec(letrecForm, env, c);
+}
+
 function expandLetrec(stx: SList, env: Env, c: Counters): ExpandRes {
   // (letrec ((x e) ...) body...)
   // Unlike let, bindings ARE in scope for their own init expressions (recursive)
@@ -584,6 +736,79 @@ function expandLetrec(stx: SList, env: Env, c: Counters): ExpandRes {
 
   // Add binder scope to body BEFORE expanding
   const bodyScoped = bodyForms.map(b => addScope(b, B));
+  const bodyExpanded: Syntax[] = [];
+  let Γ2 = Γ;
+
+  for (const b of bodyScoped) {
+    const r = expandExpr(b, Γ2, c);
+    Γ2 = r.env;
+    bodyExpanded.push(r.stx);
+  }
+
+  const bindsOut: Syntax = {
+    ...bindsList,
+    items: bindPairs.map(({ idB, init }) => ({
+      tag: "List",
+      scopes: [],
+      items: [idB, init],
+    })),
+  };
+
+  const stx2: Syntax = {
+    ...stx,
+    items: [stx.items[0], bindsOut, ...bodyExpanded],
+  };
+
+  return { stx: stx2, env: Γ2 };
+}
+
+function expandLetStar(stx: SList, env: Env, c: Counters): ExpandRes {
+  // (let* ((x1 e1) (x2 e2) ...) body...)
+  // Each binding is in scope for subsequent bindings (sequential)
+  if (stx.items.length < 3) throw new Error("let*: expected (let* ((x e) ...) body...)");
+  const bindsList = expectList(stx.items[1], "let*: bindings must be list");
+  const bodyForms = stx.items.slice(2);
+
+  // Process each binding sequentially, adding to scope as we go
+  let Γ = env;
+  const bindPairs: Array<{ idB: SIdent; init: Syntax; scope: Scope }> = [];
+  const allScopes: Scope[] = [];
+
+  for (const bp of bindsList.items) {
+    const pair = expectList(bp, "let*: binding must be list");
+    if (pair.items.length !== 2) throw new Error("let*: binding must be (x init)");
+    const id = expectIdent(pair.items[0], "let*: binder must be ident");
+    const init0 = pair.items[1];
+
+    // Expand init with current environment (previous bindings visible)
+    // Add all accumulated scopes to init expression
+    let initScoped = init0;
+    for (const sc of allScopes) {
+      initScoped = addScope(initScoped, sc);
+    }
+    const initR = expandExpr(initScoped, Γ, c);
+    Γ = initR.env;
+
+    // Create fresh scope for this binding
+    const B = freshScope(c.scope);
+    allScopes.push(B);
+
+    // Add scope to identifier
+    const idB = addScope(id, B) as SIdent;
+
+    // Install binding into env
+    const bid = freshBid(c);
+    Γ = bindValue(Γ, idB, bid, internalName(idB.name, bid));
+
+    bindPairs.push({ idB, init: initR.stx, scope: B });
+  }
+
+  // Add all binder scopes to body BEFORE expanding
+  let bodyScoped = bodyForms;
+  for (const sc of allScopes) {
+    bodyScoped = bodyScoped.map(b => addScope(b, sc));
+  }
+
   const bodyExpanded: Syntax[] = [];
   let Γ2 = Γ;
 

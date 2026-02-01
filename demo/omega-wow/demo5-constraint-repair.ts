@@ -330,16 +330,26 @@ async function runConstraintRepairDemo(ctx: DemoContext): Promise<DemoResult> {
       const violations = args[0];
 
       // Propose repairs based on violations
+      // IMPORTANT: Order matters! Prioritize non-oracle-consuming repairs first
       const proposed: string[] = [];
 
+      // First: handle budget - use cheaper model before adding oracle calls
+      if (violations.some(v => v.constraintId === "oracle-budget")) {
+        proposed.push("cheaper-model");
+      }
+
+      // Then: PII is mechanical (no oracle cost)
       if (violations.some(v => v.constraintId === "no-pii")) {
         proposed.push("scrub-pii");
       }
+
+      // Then: normalization is mechanical (no oracle cost)
       if (violations.some(v => v.constraintId === "professional-tone")) {
-        proposed.push("add-normalization", "semantic-rewrite");
-      }
-      if (violations.some(v => v.constraintId === "oracle-budget")) {
-        proposed.push("cheaper-model");
+        proposed.push("add-normalization");
+        // Only add semantic-rewrite if budget allows (not violated)
+        if (!violations.some(v => v.constraintId === "oracle-budget")) {
+          proposed.push("semantic-rewrite");
+        }
       }
 
       return {

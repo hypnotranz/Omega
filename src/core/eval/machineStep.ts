@@ -607,6 +607,184 @@ function applyFrame(fr: Frame, v: Val, st: State): StepOutcome {
       return applyVal(fr.fn, [v], { ...st, env: fr.env });
     }
 
+    case "KMapRest": {
+      // v is the result of applying fn to the current item
+      // Add it to acc and continue with remaining items
+      const newAcc = [...fr.acc, v];
+
+      if (fr.remaining.length === 0) {
+        // All done - build result list
+        let resultList: Val = VUnit;
+        for (let i = newAcc.length - 1; i >= 0; i--) {
+          resultList = { tag: "Vector", items: [newAcc[i], resultList] };
+        }
+        return { tag: "State", state: { ...st, control: { tag: "Val", v: resultList }, env: fr.env } };
+      }
+
+      // More items to process - apply fn to next item
+      const [next, ...rest] = fr.remaining;
+      const nextFrame: Frame = { tag: "KMapRest", fn: fr.fn, remaining: rest, acc: newAcc, env: fr.env };
+      const kont2 = push(st.kont, nextFrame);
+      return applyVal(fr.fn, [next], { ...st, kont: kont2, env: fr.env });
+    }
+
+    case "KFilterRest": {
+      // v is the predicate result for currentItem
+      const keep = v.tag === "Bool" && v.b;
+      const newAcc = keep ? [...fr.acc, fr.currentItem] : fr.acc;
+
+      if (fr.remaining.length === 0) {
+        // All done - build result list
+        let resultList: Val = VUnit;
+        for (let i = newAcc.length - 1; i >= 0; i--) {
+          resultList = { tag: "Vector", items: [newAcc[i], resultList] };
+        }
+        return { tag: "State", state: { ...st, control: { tag: "Val", v: resultList }, env: fr.env } };
+      }
+
+      // More items to process - apply fn to next item
+      const [next, ...rest] = fr.remaining;
+      const nextFrame: Frame = { tag: "KFilterRest", fn: fr.fn, remaining: rest, currentItem: next, acc: newAcc, env: fr.env };
+      const kont2 = push(st.kont, nextFrame);
+      return applyVal(fr.fn, [next], { ...st, kont: kont2, env: fr.env });
+    }
+
+    case "KFoldRest": {
+      // v is the new accumulator (result of (f acc item))
+      if (fr.remaining.length === 0) {
+        // All done - v is the final result
+        return { tag: "State", state: { ...st, control: { tag: "Val", v }, env: fr.env } };
+      }
+
+      // More items - apply fn to (acc, next)
+      const [next, ...rest] = fr.remaining;
+      const nextFrame: Frame = { tag: "KFoldRest", fn: fr.fn, remaining: rest, env: fr.env };
+      const kont2 = push(st.kont, nextFrame);
+      return applyVal(fr.fn, [v, next], { ...st, kont: kont2, env: fr.env });
+    }
+
+    case "KStreamMapHead": {
+      // v is the mapped head value
+      // Build stream cons: (v . <lazy-thunk-for-tail>)
+      const tailThunk: Val = {
+        tag: "StreamMapThunk",
+        fn: fr.fn,
+        streamTail: fr.streamTail,
+      } as any;
+      const promise: Val = { tag: "Promise", thunk: tailThunk, forced: false, value: undefined } as any;
+      const result: Val = { tag: "Vector", items: [v, promise] };
+      return { tag: "State", state: { ...st, control: { tag: "Val", v: result }, env: fr.env } };
+    }
+
+    case "KStreamToListRest": {
+      // v is the forced stream (or next element after forcing)
+      // Continue collecting from this stream
+      const stream = v as any;
+      const items = [...fr.acc];
+      let cur = stream;
+      let remaining = fr.remaining;
+
+      // Continue the collection loop
+      while (remaining > 0) {
+        if (cur.tag === "Unit" || (cur.tag === "Vector" && cur.items.length === 0)) {
+          break;
+        }
+        if (cur.tag !== "Vector" || cur.items.length < 2) {
+          break;
+        }
+
+        items.push(cur.items[0]);
+        remaining--;
+
+        if (remaining === 0) break;
+
+        // Get tail
+        const tail = cur.items[1] as any;
+        if (tail.tag === "Promise") {
+          if (tail.forced) {
+            cur = tail.value;
+          } else if (tail.thunk.tag === "Native") {
+            // Force native thunk
+            const result = (tail.thunk as any).fn([], st);
+            if (result.control?.tag === "Val") {
+              tail.forced = true;
+              tail.value = result.control.v;
+              cur = tail.value;
+            } else {
+              break;
+            }
+          } else if ((tail.thunk as any).tag === "StreamMapThunk") {
+            // Need to force StreamMapThunk - push frame and apply closure
+            const smThunk = tail.thunk as any;
+            // First force the underlying stream tail
+            let underlyingTail = smThunk.streamTail as any;
+            if (underlyingTail.tag === "Promise" && !underlyingTail.forced) {
+              if (underlyingTail.thunk.tag === "Native") {
+                const r = (underlyingTail.thunk as any).fn([], st);
+                if (r.control?.tag === "Val") {
+                  underlyingTail.forced = true;
+                  underlyingTail.value = r.control.v;
+                  underlyingTail = underlyingTail.value;
+                } else {
+                  break;
+                }
+              }
+            } else if (underlyingTail.tag === "Promise" && underlyingTail.forced) {
+              underlyingTail = underlyingTail.value;
+            }
+
+            if (underlyingTail.tag === "Unit") {
+              // No more elements - we're done
+              tail.forced = true;
+              tail.value = VUnit;
+              break;
+            }
+            if (underlyingTail.tag !== "Vector" || underlyingTail.items.length < 2) {
+              tail.forced = true;
+              tail.value = VUnit;
+              break;
+            }
+
+            // Apply fn to head of underlying tail
+            const nextHead = underlyingTail.items[0];
+            const nextTail = underlyingTail.items[1];
+
+            // Push frame to continue after closure application
+            const contFrame: Frame = {
+              tag: "KStreamToListRest",
+              remaining,
+              acc: items,
+              env: fr.env,
+            };
+            // Push frame to build stream after head is mapped
+            const buildFrame: Frame = {
+              tag: "KStreamMapHead",
+              fn: smThunk.fn,
+              streamTail: nextTail,
+              env: fr.env,
+            };
+            // Mark this promise as being computed
+            (tail as any)._computing = true;
+            (tail as any)._contFrame = contFrame;
+
+            const kont2 = push(push(st.kont, contFrame), buildFrame);
+            return applyVal(smThunk.fn, [nextHead], { ...st, kont: kont2, env: fr.env });
+          } else {
+            break;
+          }
+        } else {
+          cur = tail;
+        }
+      }
+
+      // Build final result list
+      let result: Val = VUnit;
+      for (let i = items.length - 1; i >= 0; i--) {
+        result = { tag: "Vector", items: [items[i], result] };
+      }
+      return { tag: "State", state: { ...st, control: { tag: "Val", v: result }, env: fr.env } };
+    }
+
     default: {
       const _exh: never = fr;
       return _exh;

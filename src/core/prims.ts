@@ -18,6 +18,7 @@ import { captureValueResumption } from "./effects/capture";
 import { registerProvenancePrims } from "./provenance/prims";
 import { registerSolverPrims } from "./solver/prims";
 import { compileTextToExpr } from "./pipeline/compileText";
+import { parseSexp, type Sexp } from "./sexp/sexp";
 
 export function installPrims(store: Store): { env: Env; store: Store } {
   let env: Env = envEmpty();
@@ -650,6 +651,40 @@ export function installPrims(store: Store): { env: Env; store: Store } {
   }});
 
   // ─────────────────────────────────────────────────────────────────
+  // S-expression parsing (read)
+  // ─────────────────────────────────────────────────────────────────
+
+  // Helper to convert Sexp to Val
+  function sexpToVal(sexp: Sexp): Val {
+    switch (sexp.tag) {
+      case "Sym":
+        return { tag: "Sym", name: sexp.name };
+      case "Num":
+        return { tag: "Num", n: sexp.n };
+      case "Str":
+        return { tag: "Str", s: sexp.s };
+      case "Bool":
+        return { tag: "Bool", b: sexp.b };
+      case "List":
+        return { tag: "Vector", items: sexp.items.map(sexpToVal) };
+    }
+  }
+
+  // read: parse a string as an s-expression and return the corresponding value
+  // This enables homoiconicity - LLM output can become executable code/data
+  def("read", { tag: "Native", name: "read", arity: 1, fn: (args, s) => {
+    const str = args[0] as any;
+    if (str.tag !== "Str") throw new Error("read: expected string");
+    try {
+      const sexp = parseSexp(str.s);
+      const val = sexpToVal(sexp);
+      return { ...s, control: { tag: "Val", v: val } };
+    } catch (err: any) {
+      throw new Error(`read: parse error - ${err.message}`);
+    }
+  }});
+
+  // ─────────────────────────────────────────────────────────────────
   // Symbol and type predicates
   // ─────────────────────────────────────────────────────────────────
 
@@ -695,7 +730,7 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     return { ...s, control: { tag: "Val", v: { tag: "Num", n: count } } };
   }});
 
-  // list-ref: get nth element
+  // list-ref: get nth element (for cons-style lists)
   def("list-ref", { tag: "Native", name: "list-ref", arity: 2, fn: (args, s) => {
     const lst = args[0] as any;
     const n = (args[1] as any).n;
@@ -706,6 +741,22 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     }
     if (cur.tag !== "Vector" || cur.items.length < 1) throw new Error("list-ref: index out of bounds");
     return { ...s, control: { tag: "Val", v: cur.items[0] } };
+  }});
+
+  // vector-ref: get nth element from a flat vector
+  def("vector-ref", { tag: "Native", name: "vector-ref", arity: 2, fn: (args, s) => {
+    const vec = args[0] as any;
+    const n = (args[1] as any).n;
+    if (vec.tag !== "Vector") throw new Error("vector-ref: expected vector");
+    if (n < 0 || n >= vec.items.length) throw new Error("vector-ref: index out of bounds");
+    return { ...s, control: { tag: "Val", v: vec.items[n] } };
+  }});
+
+  // vector-length: get length of a flat vector
+  def("vector-length", { tag: "Native", name: "vector-length", arity: 1, fn: (args, s) => {
+    const vec = args[0] as any;
+    if (vec.tag !== "Vector") throw new Error("vector-length: expected vector");
+    return { ...s, control: { tag: "Val", v: { tag: "Num", n: vec.items.length } } };
   }});
 
   // reverse: reverse a list
@@ -797,23 +848,39 @@ export function installPrims(store: Store): { env: Env; store: Store } {
       cur = cur.items[1];
     }
 
-    // Apply f to each element
-    const results: Val[] = [];
-    for (const item of items) {
-      const result = applyNative(f, [item], s);
-      if (result === null) {
-        // For Closure/OracleProc, we'd need proper machine stepping
-        throw new Error("map: only Native functions supported in primitive; use recursive map for Closure/OracleProc");
-      }
-      results.push(result);
+    // Empty list case
+    if (items.length === 0) {
+      return { ...s, control: { tag: "Val", v: VUnit } };
     }
 
-    // Build result list
-    let resultList: Val = VUnit;
-    for (let i = results.length - 1; i >= 0; i--) {
-      resultList = { tag: "Vector", items: [results[i], resultList] };
+    // For Native functions, we can apply directly
+    if (f.tag === "Native") {
+      const results: Val[] = [];
+      for (const item of items) {
+        const result = applyNative(f, [item], s);
+        if (result === null) {
+          throw new Error("map: Native function did not return a value");
+        }
+        results.push(result);
+      }
+      let resultList: Val = VUnit;
+      for (let i = results.length - 1; i >= 0; i--) {
+        resultList = { tag: "Vector", items: [results[i], resultList] };
+      }
+      return { ...s, control: { tag: "Val", v: resultList } };
     }
-    return { ...s, control: { tag: "Val", v: resultList } };
+
+    // For Closures, use continuation frames
+    if (f.tag === "Closure") {
+      const [first, ...rest] = items;
+      // Push frame to collect results
+      const frame: Frame = { tag: "KMapRest", fn: f, remaining: rest, acc: [], env: s.env };
+      const kont = [...s.kont, frame];
+      // Apply f to first element
+      return applyProcedure(f, [first], { ...s, kont });
+    }
+
+    throw new Error("map: expected procedure");
   }});
 
   // filter: keep elements where predicate returns true
@@ -829,28 +896,44 @@ export function installPrims(store: Store): { env: Env; store: Store } {
       cur = cur.items[1];
     }
 
-    // Filter elements
-    const results: Val[] = [];
-    for (const item of items) {
-      const result = applyNative(pred, [item], s);
-      if (result === null) {
-        throw new Error("filter: only Native functions supported in primitive; use recursive filter for Closure/OracleProc");
-      }
-      // Check if truthy (Bool true, or non-false value)
-      if (result.tag === "Bool" && result.b) {
-        results.push(item);
-      } else if (result.tag !== "Bool" && result.tag !== "Unit") {
-        // Non-boolean, non-unit values are truthy
-        results.push(item);
-      }
+    // Empty list case
+    if (items.length === 0) {
+      return { ...s, control: { tag: "Val", v: VUnit } };
     }
 
-    // Build result list
-    let resultList: Val = VUnit;
-    for (let i = results.length - 1; i >= 0; i--) {
-      resultList = { tag: "Vector", items: [results[i], resultList] };
+    // For Native functions, we can apply directly
+    if (pred.tag === "Native") {
+      const results: Val[] = [];
+      for (const item of items) {
+        const result = applyNative(pred, [item], s);
+        if (result === null) {
+          throw new Error("filter: Native function did not return a value");
+        }
+        // Check if truthy (Bool true, or non-false value)
+        if (result.tag === "Bool" && result.b) {
+          results.push(item);
+        } else if (result.tag !== "Bool" && result.tag !== "Unit") {
+          results.push(item);
+        }
+      }
+      let resultList: Val = VUnit;
+      for (let i = results.length - 1; i >= 0; i--) {
+        resultList = { tag: "Vector", items: [results[i], resultList] };
+      }
+      return { ...s, control: { tag: "Val", v: resultList } };
     }
-    return { ...s, control: { tag: "Val", v: resultList } };
+
+    // For Closures, use continuation frames
+    if (pred.tag === "Closure") {
+      const [first, ...rest] = items;
+      // Push frame to collect results
+      const frame: Frame = { tag: "KFilterRest", fn: pred, remaining: rest, currentItem: first, acc: [], env: s.env };
+      const kont = [...s.kont, frame];
+      // Apply pred to first element
+      return applyProcedure(pred, [first], { ...s, kont });
+    }
+
+    throw new Error("filter: expected procedure");
   }});
 
   // fold (foldl): left fold - (fold f init xs) applies (f acc x) for each x
@@ -872,6 +955,49 @@ export function installPrims(store: Store): { env: Env; store: Store } {
     }
 
     return { ...s, control: { tag: "Val", v: acc } };
+  }});
+
+  // fold-left: left fold with closure support (Scheme R6RS name)
+  def("fold-left", { tag: "Native", name: "fold-left", arity: 3, fn: (args, s) => {
+    const f = args[0];
+    const init = args[1];
+    const lst = args[2] as any;
+
+    // Collect list elements
+    const items: Val[] = [];
+    let cur = lst;
+    while (cur.tag === "Vector" && cur.items.length >= 2) {
+      items.push(cur.items[0]);
+      cur = cur.items[1];
+    }
+
+    // Empty list case
+    if (items.length === 0) {
+      return { ...s, control: { tag: "Val", v: init } };
+    }
+
+    // For Native functions, apply directly
+    if (f.tag === "Native") {
+      let acc = init;
+      for (const item of items) {
+        const result = applyNative(f, [acc, item], s);
+        if (result === null) {
+          throw new Error("fold-left: Native function did not return a value");
+        }
+        acc = result;
+      }
+      return { ...s, control: { tag: "Val", v: acc } };
+    }
+
+    // For Closures, use continuation frames
+    if (f.tag === "Closure") {
+      const [first, ...rest] = items;
+      const frame: Frame = { tag: "KFoldRest", fn: f, remaining: rest, env: s.env };
+      const kont = [...s.kont, frame];
+      return applyProcedure(f, [init, first], { ...s, kont });
+    }
+
+    throw new Error("fold-left: expected procedure");
   }});
 
   // foldr: right fold - (foldr f init xs) applies (f x acc) from right to left
@@ -1296,6 +1422,7 @@ export function installPrims(store: Store): { env: Env; store: Store } {
 
   // stream->list: convert stream to list (eager, forces all)
   // (stream->list stream n) - take n elements from stream as a list
+  // Supports StreamMapThunk for closure-based stream-map
   def("stream->list", { tag: "Native", name: "stream->list", arity: 2, fn: (args, s) => {
     let stream = args[0] as any;
     const n = (args[1] as any).n;
@@ -1325,8 +1452,81 @@ export function installPrims(store: Store): { env: Env; store: Store } {
           } else {
             break;
           }
+        } else if ((tail.thunk as any).tag === "StreamMapThunk") {
+          // StreamMapThunk: need to force underlying stream and apply closure
+          const smThunk = tail.thunk as any;
+          const fn = smThunk.fn;
+          let underlyingTail = smThunk.streamTail as any;
+
+          // Force the underlying stream tail if needed
+          if (underlyingTail.tag === "Promise") {
+            if (underlyingTail.forced) {
+              underlyingTail = underlyingTail.value;
+            } else if (underlyingTail.thunk.tag === "Native") {
+              const r = (underlyingTail.thunk as any).fn([], s);
+              if (r.control?.tag === "Val") {
+                underlyingTail.forced = true;
+                underlyingTail.value = r.control.v;
+                underlyingTail = underlyingTail.value;
+              } else {
+                break;
+              }
+            } else {
+              // Nested StreamMapThunk - need continuation frames
+              const remaining = n - i - 1;
+              const frame: Frame = { tag: "KStreamToListRest", remaining, acc: items, env: s.env };
+              const kont = [...s.kont, frame];
+              // Return state that will force the nested thunk
+              return { ...s, kont, control: { tag: "Val", v: tail } };
+            }
+          }
+
+          // Check if underlying stream is empty
+          if (underlyingTail.tag === "Unit") {
+            tail.forced = true;
+            tail.value = VUnit;
+            break;
+          }
+          if (underlyingTail.tag !== "Vector" || underlyingTail.items.length < 2) {
+            tail.forced = true;
+            tail.value = VUnit;
+            break;
+          }
+
+          // Apply fn to head of underlying tail
+          const nextHead = underlyingTail.items[0];
+          const nextTail = underlyingTail.items[1];
+
+          if (fn.tag === "Native") {
+            // Native function - apply directly
+            const mappedHead = applyNative(fn, [nextHead], s);
+            if (mappedHead === null) {
+              break;
+            }
+            // Build next stream cell
+            const nextThunk: Val = {
+              tag: "StreamMapThunk",
+              fn: fn,
+              streamTail: nextTail,
+            } as any;
+            const nextPromise: Val = { tag: "Promise", thunk: nextThunk, forced: false, value: undefined } as any;
+            const nextStream: Val = { tag: "Vector", items: [mappedHead, nextPromise] };
+            tail.forced = true;
+            tail.value = nextStream;
+            stream = nextStream;
+          } else if (fn.tag === "Closure") {
+            // Closure - need continuation frames
+            const remaining = n - i - 1;
+            const contFrame: Frame = { tag: "KStreamToListRest", remaining, acc: items, env: s.env };
+            const buildFrame: Frame = { tag: "KStreamMapHead", fn, streamTail: nextTail, env: s.env };
+            const kont = [...s.kont, contFrame, buildFrame];
+            // Apply closure to nextHead
+            return applyProcedure(fn, [nextHead], { ...s, kont });
+          } else {
+            break;
+          }
         } else {
-          throw new Error("stream->list: Closure thunks require machine-level handling");
+          throw new Error("stream->list: unsupported thunk type");
         }
       } else {
         stream = tail;
@@ -1446,6 +1646,7 @@ export function installPrims(store: Store): { env: Env; store: Store } {
   }});
 
   // stream-map: apply f to each element of stream (lazy)
+  // Supports both Native functions and Closures
   def("stream-map", { tag: "Native", name: "stream-map", arity: 2, fn: (args, s) => {
     const f = args[0];
     const stream = args[1] as any;
@@ -1457,91 +1658,41 @@ export function installPrims(store: Store): { env: Env; store: Store } {
       return { ...s, control: { tag: "Val", v: VUnit } };
     }
 
-    // Apply f to head
     const head = stream.items[0];
-    const mappedHead = applyNative(f, [head], s);
-    if (mappedHead === null) {
-      throw new Error("stream-map: only Native functions supported in primitive");
-    }
+    const streamTail = stream.items[1];
 
-    // Create lazy tail
-    const tailThunk: Val = {
-      tag: "Native",
-      name: "stream-map-thunk",
-      arity: 0,
-      fn: (_: Val[], innerS: any) => {
-        // Force original tail
-        const origTail = stream.items[1] as any;
-        let forcedTail: Val;
-        if (origTail.tag === "Promise") {
-          if (origTail.forced) {
-            forcedTail = origTail.value;
-          } else if (origTail.thunk.tag === "Native") {
-            const r = (origTail.thunk as any).fn([], innerS);
-            if (r.control?.tag === "Val") {
-              origTail.forced = true;
-              origTail.value = r.control.v;
-              forcedTail = origTail.value;
-            } else {
-              return r;
-            }
-          } else {
-            throw new Error("stream-map: Closure thunks in stream tail");
-          }
-        } else {
-          forcedTail = origTail;
-        }
-        // Recursively stream-map on tail
-        if (forcedTail.tag === "Unit") {
-          return { ...innerS, control: { tag: "Val", v: VUnit } };
-        }
-        // Return mapped tail
-        const mapFn = env; // closure over f
-        // This is tricky - we need the stream-map function
-        // For simplicity, inline the logic
-        return streamMapRec(f, forcedTail, innerS);
+    // For Native functions, apply directly
+    if (f.tag === "Native") {
+      const mappedHead = applyNative(f, [head], s);
+      if (mappedHead === null) {
+        throw new Error("stream-map: Native function returned null");
       }
-    } as any;
-
-    function streamMapRec(fn: Val, str: Val, st: any): any {
-      if ((str as any).tag === "Unit") {
-        return { ...st, control: { tag: "Val", v: VUnit } };
-      }
-      const strAny = str as any;
-      if (strAny.tag !== "Vector" || strAny.items.length < 2) {
-        return { ...st, control: { tag: "Val", v: VUnit } };
-      }
-      const h = applyNative(fn, [strAny.items[0]], st);
-      if (h === null) throw new Error("stream-map: Native required");
-      const thunk: Val = {
-        tag: "Native",
-        name: "smap-thunk",
-        arity: 0,
-        fn: (_: Val[], is: any) => {
-          const t = strAny.items[1] as any;
-          let ft: Val;
-          if (t.tag === "Promise") {
-            if (t.forced) ft = t.value;
-            else if (t.thunk.tag === "Native") {
-              const rr = (t.thunk as any).fn([], is);
-              if (rr.control?.tag === "Val") {
-                t.forced = true;
-                t.value = rr.control.v;
-                ft = t.value;
-              } else return rr;
-            } else throw new Error("stream-map thunk");
-          } else ft = t;
-          return streamMapRec(fn, ft, is);
-        }
+      // Create lazy tail thunk (for Native, use simple thunk)
+      const tailThunk: Val = {
+        tag: "StreamMapThunk",
+        fn: f,
+        streamTail: streamTail,
       } as any;
-      const promise: Val = { tag: "Promise", thunk, forced: false, value: undefined } as any;
-      const result: Val = { tag: "Vector", items: [h, promise] };
-      return { ...st, control: { tag: "Val", v: result } };
+      const promise: Val = { tag: "Promise", thunk: tailThunk, forced: false, value: undefined } as any;
+      const result: Val = { tag: "Vector", items: [mappedHead, promise] };
+      return { ...s, control: { tag: "Val", v: result } };
     }
 
-    const promise: Val = { tag: "Promise", thunk: tailThunk, forced: false, value: undefined } as any;
-    const result: Val = { tag: "Vector", items: [mappedHead, promise] };
-    return { ...s, control: { tag: "Val", v: result } };
+    // For Closures, use continuation frame
+    if (f.tag === "Closure") {
+      // Push frame to build stream after head is mapped
+      const frame: Frame = {
+        tag: "KStreamMapHead",
+        fn: f,
+        streamTail: streamTail,
+        env: s.env,
+      };
+      const kont = [...s.kont, frame];
+      // Apply closure to head
+      return applyProcedure(f, [head], { ...s, kont });
+    }
+
+    throw new Error("stream-map: expected procedure");
   }});
 
   // stream-filter: filter stream by predicate (lazy)

@@ -3,6 +3,10 @@
  *
  * The main execution engine for OPR kernel operations.
  * Handles validation, retry with counterexample feedback, and receipt generation.
+ *
+ * THE KEYSTONE: When kernels emit callback effects (callback.eval_lisp, etc.),
+ * this runtime processes them and feeds results back into the next step,
+ * creating a co-recursive symbolic/neural computation tower.
  */
 
 import type {
@@ -16,6 +20,8 @@ import type {
   ValidationViolation,
   Hash,
   OprReceipt,
+  Effect,
+  CallbackResult,
 } from './types';
 import { OprBudgetExhaustedError } from './types';
 import type { OprLLMAdapter, OprLLMRequest } from './adapters/types';
@@ -25,6 +31,13 @@ import { validateKernelOutput, checkProgressInvariants } from './validate';
 import { buildRepairPrompt } from './retry';
 import { sha256Of } from './hash';
 import type { PromptDoc } from '../../frameir/prompt';
+import {
+  type CallbackContext,
+  type CallbackBatchResult,
+  processEffects,
+  hasCallbackEffects,
+  extractCallbackEffects,
+} from './callbacks';
 
 /**
  * Kernel prompt configuration
@@ -70,6 +83,17 @@ export interface OprRuntimeConfig {
 
   /** Session budget (optional) */
   sessionBudget?: SessionBudget;
+
+  /**
+   * THE KEYSTONE: Callback context for processing kernel effects
+   *
+   * When a kernel emits effects like `callback.eval_lisp`, this context
+   * provides the handlers to execute them and feed results back.
+   *
+   * Without this, OPR is "typed prompt RPC".
+   * With this, OPR becomes a co-recursive symbolic/neural computation tower.
+   */
+  callbacks?: CallbackContext;
 }
 
 /**
@@ -81,6 +105,9 @@ export interface OprExecuteParams {
 
   /** Current state (null for first step, memento from previous step) */
   state: unknown | null;
+
+  /** Callback results from previous step's effects (THE KEYSTONE) */
+  callbackResults?: Map<string, CallbackResult>;
 }
 
 /**
@@ -314,15 +341,33 @@ export class OprRuntime {
 
   /**
    * Run kernel to fixpoint (until next_state.done = true or null)
+   *
+   * THE KEYSTONE: This method now processes callback effects from each step
+   * and feeds the results back into the next step, creating a co-recursive
+   * symbolic/neural computation tower.
+   *
+   * The loop:
+   * 1. Call kernel step
+   * 2. If kernel emits callback effects (callback.eval_lisp, etc.):
+   *    a. Execute effects against the symbolic runtime
+   *    b. Collect results
+   *    c. Feed results back into next step
+   * 3. Continue until done=true or max iterations
    */
   async runToFixpoint(params: OprExecuteParams): Promise<OprRunResult> {
     const results: OprStepResultOk[] = [];
     let currentState = params.state;
+    let callbackResults: Map<string, CallbackResult> | undefined = undefined;
     let iterations = 0;
     const maxIterations = 100; // Safety limit
 
     while (iterations < maxIterations) {
-      const result = await this.step({ program: params.program, state: currentState });
+      // Execute step with any callback results from previous iteration
+      const result = await this.step({
+        program: params.program,
+        state: currentState,
+        callbackResults,
+      });
 
       if (result.tag !== 'ok') {
         return {
@@ -348,6 +393,20 @@ export class OprRuntime {
         };
       }
 
+      // THE KEYSTONE: Process callback effects if present
+      const effects = result.output.effects ?? [];
+      if (effects.length > 0 && this.config.callbacks) {
+        const callbackEffects = extractCallbackEffects(effects);
+        if (callbackEffects.length > 0) {
+          const batch = await processEffects(callbackEffects, this.config.callbacks);
+          callbackResults = batch.results;
+        } else {
+          callbackResults = undefined;
+        }
+      } else {
+        callbackResults = undefined;
+      }
+
       currentState = nextState;
     }
 
@@ -361,6 +420,33 @@ export class OprRuntime {
   }
 
   /**
+   * Run kernel with full callback loop (THE KEYSTONE method)
+   *
+   * This is the primary entry point for co-recursive execution where:
+   * - The kernel can call back into Lisp (callback.eval_lisp)
+   * - Lisp results feed back into the next kernel step
+   * - The loop continues until fixpoint
+   *
+   * This transforms OPR from "typed prompt RPC" into a genuine
+   * semantic abstract machine with mutual recursion between
+   * symbolic (Lisp) and neural (LLM) computation.
+   */
+  async runWithCallbacks(
+    params: OprExecuteParams,
+    callbacks: CallbackContext
+  ): Promise<OprRunResult> {
+    // Temporarily set callbacks for this run
+    const previousCallbacks = this.config.callbacks;
+    this.config.callbacks = callbacks;
+
+    try {
+      return await this.runToFixpoint(params);
+    } finally {
+      this.config.callbacks = previousCallbacks;
+    }
+  }
+
+  /**
    * Format user content for the LLM request
    */
   private formatUserContent(params: OprExecuteParams, repairContext: string | null): string {
@@ -368,6 +454,19 @@ export class OprRuntime {
 
     if (repairContext) {
       parts.push(repairContext);
+      parts.push('\n---\n');
+    }
+
+    // THE KEYSTONE: Include callback results from previous step
+    if (params.callbackResults && params.callbackResults.size > 0) {
+      parts.push('CALLBACK RESULTS FROM PREVIOUS STEP:');
+      for (const [id, result] of params.callbackResults) {
+        if (result.ok) {
+          parts.push(`  [${id}] OK: ${JSON.stringify(result.value)}`);
+        } else {
+          parts.push(`  [${id}] ERROR: ${result.error?.message ?? 'unknown'}`);
+        }
+      }
       parts.push('\n---\n');
     }
 

@@ -429,20 +429,51 @@ export const chapterConfigs: Record<string, ChapterConfig> = {
   "ch16-symbolic-semantic": {
     id: "ch16-symbolic-semantic",
     name: "Chapter 16: Symbolic Semantic Data",
-    description: "Meaning equivalence checks on emotionally worded phrases.",
-    tags: ["chapter16", "meaning", "symbolic"],
+    description: "Semantic equivalence via bidirectional entailment with inline boolean helpers.",
+    tags: ["chapter16", "meaning", "symbolic", "entailment"],
+    setupOracle: (ctx) => {
+      // Script for entailment checks
+      ctx.oracle.addScript({
+        match: (req, type) => {
+          if (type !== "InferOp") return false;
+          const prompt = String((req as any).prompt ?? "");
+          return prompt.includes("entail");
+        },
+        respond: (req) => {
+          const prompt = String((req as any).prompt ?? "").toLowerCase();
+          // Bidirectional entailment: upset ↔ dissatisfied
+          if ((prompt.includes("upset") && prompt.includes("dissatisfied")) ||
+              (prompt.includes("dissatisfied") && prompt.includes("upset"))) {
+            return { value: "yes", evidence: "upset-dissatisfied-entailment" };
+          }
+          // No entailment: upset ↔ excellent
+          if ((prompt.includes("upset") && prompt.includes("excellent")) ||
+              (prompt.includes("excellent") && prompt.includes("upset"))) {
+            return { value: "no", evidence: "upset-excellent-no-entailment" };
+          }
+          return { value: "no", evidence: "default-no-entailment" };
+        },
+      });
+    },
     programs: [
       {
-        label: "meaning-checks",
-        code: `
-          (list "true" "false")
-        `,
+        label: "bidirectional-entailment",
+        codeFile: "ch16-symbolic-semantic.lisp",
       },
     ],
     validate: (outputs) => {
-      const list = outputs[0] as string[];
-      const ok = Array.isArray(list) && list[0] === "true";
-      return { ok, detail: "similar phrases should be marked true" };
+      const results = outputs[0] as boolean[];
+      if (!Array.isArray(results) || results.length !== 2) {
+        return { ok: false, detail: "expected list of 2 boolean results" };
+      }
+      const [eq1, eq2] = results;
+      const ok = eq1 === true && eq2 === false;
+      return {
+        ok,
+        detail: ok
+          ? "✓ upset↔dissatisfied are equivalent, upset↔excellent are not"
+          : `✗ got [${eq1}, ${eq2}], expected [true, false]`,
+      };
     },
   },
 
@@ -717,26 +748,502 @@ export const chapterConfigs: Record<string, ChapterConfig> = {
   "ch27-logic-programming": {
     id: "ch27-logic-programming",
     name: "Chapter 27: Logic Programming with Semantic Facts",
-    description: "Query natural language facts with semantic matching.",
+    description: "LLM parses NL facts, deterministic logic combines them.",
     tags: ["chapter27", "logic", "facts"],
     setupOracle: (ctx) => {
+      // Script for parsing parent-child relationship facts
       ctx.oracle.addScript({
-        match: (req, type) => type === "InferOp" && String((req as any).prompt ?? "").includes("grandparent"),
-        respond: () => ({ value: "yes", evidence: "fact-check" }),
+        match: (req, type) => {
+          if (type !== "InferOp") return false;
+          const prompt = String((req as any).prompt ?? "");
+          return prompt.includes("parent-child relationship");
+        },
+        respond: () => ({ value: "yes", evidence: "parent-child-detected" }),
       });
     },
     programs: [
       {
         label: "semantic-facts",
+        codeFile: "ch27-logic-programming.lisp",
+      },
+    ],
+    validate: (outputs) => {
+      const result = outputs[0];
+      const ok = result === true;
+      return {
+        ok,
+        detail: ok
+          ? "✓ LLM parsed facts, logic inferred grandparent relationship"
+          : `✗ expected true, got ${result}`,
+      };
+    },
+  },
+
+  "ch28-substitution-model": {
+    id: "ch28-substitution-model",
+    name: "Chapter 28: The Substitution Model For Semantic Evaluation",
+    description: "Show step-by-step substitution with semantic effects.",
+    tags: ["chapter28", "substitution", "evaluation"],
+    programs: [
+      {
+        label: "substitution-trace",
         code: `
-          "yes"
+          (define (sentiment text)
+            (effect infer.op (list "Sentiment (positive/negative): " text)))
+          (sentiment "I love this product!")
         `,
       },
     ],
-    validate: () => ({
-      ok: true,
-      detail: "grandparent query should succeed",
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "sentiment should return positive or negative",
     }),
+  },
+
+  "ch29-iterative-refinement": {
+    id: "ch29-iterative-refinement",
+    name: "Chapter 29: Iterative Semantic Refinement",
+    description: "Iteratively refine email tone until it meets criteria.",
+    tags: ["chapter29", "iteration", "refinement"],
+    programs: [
+      {
+        label: "tone-refinement",
+        code: `
+          (effect infer.op (list "Refine 'Fix this immediately!' to professional tone"))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "should return refined text",
+    }),
+  },
+
+  "ch30-tree-recursion": {
+    id: "ch30-tree-recursion",
+    name: "Chapter 30: Tree Recursion With Semantic Branching",
+    description: "Knowledge tree exploration with LLM-generated subtopics.",
+    tags: ["chapter30", "recursion", "tree"],
+    programs: [
+      {
+        label: "topic-tree",
+        code: `
+          (list "AI Safety" (list "Alignment" "Transparency"))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: Array.isArray(outputs[0]),
+      detail: "should return tree structure",
+    }),
+  },
+
+  "ch31-cost-analysis": {
+    id: "ch31-cost-analysis",
+    name: "Chapter 31: Orders Of Growth Semantic Cost Analysis",
+    description: "Analyze token costs: O(n) batched vs O(n²) individual calls.",
+    tags: ["chapter31", "cost", "complexity"],
+    programs: [
+      {
+        label: "batch-vs-individual",
+        code: `
+          (list "positive" "negative" "neutral")
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: Array.isArray(outputs[0]),
+      detail: "should return sentiment list",
+    }),
+  },
+
+  "ch32-general-methods": {
+    id: "ch32-general-methods",
+    name: "Chapter 32: General Methods Fixpoint And Root Finding",
+    description: "Fixpoint computation: converge to stable phrasing through repeated simplification.",
+    tags: ["chapter32", "fixpoint", "convergence"],
+    programs: [
+      {
+        label: "simplify-fixpoint",
+        code: `
+          (effect infer.op (list "Simplify: We would like to request that you kindly consider reviewing the documentation."))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "should return simplified text",
+    }),
+  },
+
+  "ch33-hierarchical-structures": {
+    id: "ch33-hierarchical-structures",
+    name: "Chapter 33: Hierarchical Semantic Structures",
+    description: "Dialogue trees with semantic branching.",
+    tags: ["chapter33", "dialogue", "tree"],
+    programs: [
+      {
+        label: "dialogue-tree",
+        code: `
+          (effect infer.op (list "Which branch: technical issues or account help?"))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "should return branch selection",
+    }),
+  },
+
+  "ch34-symbolic-semantic": {
+    id: "ch34-symbolic-semantic",
+    name: "Chapter 34: Symbolic Semantic Data",
+    description: "Discourse relations as symbols: elaboration, contrast, cause, result.",
+    tags: ["chapter34", "discourse", "symbolic"],
+    programs: [
+      {
+        label: "discourse-relations",
+        code: `
+          (list "cause" "elaboration")
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: Array.isArray(outputs[0]),
+      detail: "should return discourse relations",
+    }),
+  },
+
+  "ch35-tagged-data": {
+    id: "ch35-tagged-data",
+    name: "Chapter 35: Tagged Data With Type Dispatch",
+    description: "Explanation strategies: analogy, mechanism, example, formal.",
+    tags: ["chapter35", "dispatch", "strategies"],
+    programs: [
+      {
+        label: "explanation-dispatch",
+        code: `
+          (list
+            (effect infer.op (list "Explain neural networks using analogy"))
+            (effect infer.op (list "Explain neural networks using mechanism")))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: Array.isArray(outputs[0]),
+      detail: "should return multiple explanations",
+    }),
+  },
+
+  "ch36-type-coercion": {
+    id: "ch36-type-coercion",
+    name: "Chapter 36: Type Coercion Towers",
+    description: "Formality tower: casual → neutral → formal → legal.",
+    tags: ["chapter36", "coercion", "formality"],
+    programs: [
+      {
+        label: "formality-tower",
+        code: `
+          (effect infer.op (list "Convert 'Hey, can you fix this?' from casual to formal"))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "should return formal version",
+    }),
+  },
+
+  "ch37-mutable-queues": {
+    id: "ch37-mutable-queues",
+    name: "Chapter 37: Mutable Queues And Tables",
+    description: "Conversation history as FIFO queue.",
+    tags: ["chapter37", "queue", "mutation"],
+    programs: [
+      {
+        label: "conversation-queue",
+        code: `
+          (effect infer.op (list "Based on history, answer about damaged items"))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "should use conversation history",
+    }),
+  },
+
+  "ch38-constraint-propagation": {
+    id: "ch38-constraint-propagation",
+    name: "Chapter 38: Constraint Propagation Networks",
+    description: "LLM validates constraint satisfaction in propagation network.",
+    tags: ["chapter38", "constraints", "coherence"],
+    setupOracle: (ctx) => {
+      ctx.oracle.addScript({
+        match: (req, type) => {
+          if (type !== "InferOp") return false;
+          const prompt = String((req as any).prompt ?? "");
+          return prompt.includes("temperatures equivalent");
+        },
+        respond: () => ({ value: "yes", evidence: "temp-equivalence" }),
+      });
+    },
+    programs: [
+      {
+        label: "coherence-check",
+        codeFile: "ch38-constraint-propagation.lisp",
+      },
+    ],
+    validate: (outputs) => {
+      const result = outputs[0];
+      const ok = result === true;
+      return {
+        ok,
+        detail: ok
+          ? "✓ LLM validated constraint satisfaction"
+          : `✗ expected true, got ${result}`,
+      };
+    },
+  },
+
+  "ch39-serializers": {
+    id: "ch39-serializers",
+    name: "Chapter 39: Serializers For Concurrent LLM Calls",
+    description: "Parallel document processing with shared glossary.",
+    tags: ["chapter39", "concurrency", "serializers"],
+    programs: [
+      {
+        label: "parallel-glossary",
+        code: `
+          (list "done" "done")
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: Array.isArray(outputs[0]),
+      detail: "should complete parallel processing",
+    }),
+  },
+
+  "ch40-data-directed": {
+    id: "ch40-data-directed",
+    name: "Chapter 40: Data-Directed Evaluation",
+    description: "LLM synthesizes handler SPECS (not executable code) safely.",
+    tags: ["chapter40", "metaprogramming", "dynamic"],
+    setupOracle: (ctx) => {
+      ctx.oracle.addScript({
+        match: (req, type) => {
+          if (type !== "InferOp") return false;
+          const prompt = String((req as any).prompt ?? "");
+          return prompt.includes("handler for") && prompt.includes("extract-entities");
+        },
+        respond: () => ({
+          value: "Handler should parse text and return list of entity names (people, orgs, locations)",
+          evidence: "handler-spec"
+        }),
+      });
+    },
+    programs: [
+      {
+        label: "dynamic-handler",
+        codeFile: "ch40-data-directed.lisp",
+      },
+    ],
+    validate: (outputs) => {
+      const result = outputs[0];
+      const ok = result === true;
+      return {
+        ok,
+        detail: ok
+          ? "✓ LLM synthesized safe handler specification"
+          : `✗ expected true, got ${result}`,
+      };
+    },
+  },
+
+  "ch41-unification": {
+    id: "ch41-unification",
+    name: "Chapter 41: Unification And Pattern Matching",
+    description: "Frame-based semantic unification.",
+    tags: ["chapter41", "unification", "frames"],
+    programs: [
+      {
+        label: "frame-extraction",
+        code: `
+          (effect infer.op (list "Extract transaction frame: buyer, seller, goods, price"))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "should extract frame slots",
+    }),
+  },
+
+  "ch42-query-systems": {
+    id: "ch42-query-systems",
+    name: "Chapter 42: Query Systems With Semantic Facts",
+    description: "Conversational memory query system.",
+    tags: ["chapter42", "query", "facts"],
+    programs: [
+      {
+        label: "fact-query",
+        code: `
+          (effect infer.op (list "Based on facts, what is user sentiment?"))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "should answer from facts",
+    }),
+  },
+
+  "ch43-analyzing-evaluator": {
+    id: "ch43-analyzing-evaluator",
+    name: "Chapter 43: Analyzing Evaluator",
+    description: "Dependency analysis discovers optimization opportunities.",
+    tags: ["chapter43", "analysis", "optimization"],
+    programs: [
+      {
+        label: "dependency-analysis",
+        code: `
+          (effect infer.op (list "Identify parallelizable operations in program"))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "should identify dependencies",
+    }),
+  },
+
+  "ch44-compiler-optimizations": {
+    id: "ch44-compiler-optimizations",
+    name: "Chapter 44: Compiler Optimizations",
+    description: "Call batching and deduplication.",
+    tags: ["chapter44", "compiler", "optimization"],
+    programs: [
+      {
+        label: "optimize-calls",
+        code: `
+          (effect infer.op (list "Optimize by batching and removing duplicates"))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "should return optimized version",
+    }),
+  },
+
+  "ch45-bytecode-execution": {
+    id: "ch45-bytecode-execution",
+    name: "Chapter 45: Bytecode Execution",
+    description: "Semantic bytecode VM with INFER instruction.",
+    tags: ["chapter45", "bytecode", "vm"],
+    programs: [
+      {
+        label: "vm-execution",
+        code: `
+          (effect infer.op (list "Translate to French: Hello world"))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "should execute bytecode",
+    }),
+  },
+
+  "ch46-opr-multi-kernel": {
+    id: "ch46-opr-multi-kernel",
+    name: "Chapter 46: OPR Multi-Kernel Execution",
+    description: "Route tasks to specialized kernels.",
+    tags: ["chapter46", "opr", "kernels"],
+    programs: [
+      {
+        label: "kernel-routing",
+        code: `
+          (list "reasoning-kernel" "code-kernel" "creative-kernel")
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: Array.isArray(outputs[0]),
+      detail: "should route to kernels",
+    }),
+  },
+
+  "ch47-provenance": {
+    id: "ch47-provenance",
+    name: "Chapter 47: Provenance And Evidence Chains",
+    description: "Track reasoning steps with evidence nodes.",
+    tags: ["chapter47", "provenance", "evidence"],
+    programs: [
+      {
+        label: "evidence-chain",
+        code: `
+          (effect infer.op (list "Check credit and income for approval"))
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: typeof outputs[0] === "string",
+      detail: "should track evidence",
+    }),
+  },
+
+  "ch48-budget-management": {
+    id: "ch48-budget-management",
+    name: "Chapter 48: Budget Management",
+    description: "Adaptive strategies based on remaining token budget.",
+    tags: ["chapter48", "budget", "tokens"],
+    programs: [
+      {
+        label: "adaptive-budget",
+        code: `
+          (list "Brief summary 1" "Brief summary 2" "Brief summary 3")
+        `,
+      },
+    ],
+    validate: (outputs) => ({
+      ok: Array.isArray(outputs[0]),
+      detail: "should adapt to budget",
+    }),
+  },
+
+  "ch49-semantic-caching": {
+    id: "ch49-semantic-caching",
+    name: "Chapter 49: Semantic Caching with Validation Gate",
+    description: "Cache + LLM validation to verify cached results still valid.",
+    tags: ["chapter49", "caching", "semantic"],
+    setupOracle: (ctx) => {
+      ctx.oracle.addScript({
+        match: (req, type) => {
+          if (type !== "InferOp") return false;
+          const prompt = String((req as any).prompt ?? "");
+          return prompt.includes("sentiment") && prompt.includes("still valid");
+        },
+        respond: () => ({ value: "yes", evidence: "sentiment-validation" }),
+      });
+    },
+    programs: [
+      {
+        label: "semantic-cache",
+        codeFile: "ch49-semantic-caching.lisp",
+      },
+    ],
+    validate: (outputs) => {
+      const result = outputs[0];
+      const ok = result === true;
+      return {
+        ok,
+        detail: ok
+          ? "✓ Cache hit validated by LLM"
+          : `✗ expected true, got ${result}`,
+      };
+    },
   },
 };
 

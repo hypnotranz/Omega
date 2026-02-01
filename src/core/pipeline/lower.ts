@@ -135,6 +135,44 @@ export function lowerSyntax(stx: Syntax, env: Env, phase = 0): Expr {
         return { tag: "App", fn: { tag: "Lambda", params, body }, args };
       }
 
+      case "let*": {
+        // (let* ((x1 e1) (x2 e2) ...) body...)
+        // Desugars to nested let: (let ((x1 e1)) (let ((x2 e2)) ... body))
+        if (items.length < 3) throw new Error("let*: expected (let* ((x e) ...) body...)");
+        const bindsList = expectList(items[1], "let*: bindings must be list");
+        const bodyForms = items.slice(2);
+
+        if (bindsList.items.length === 0) {
+          // Empty bindings: just evaluate body
+          const loweredBody = bodyForms.map(x => lowerSyntax(x, env, phase));
+          return loweredBody.length === 1 ? loweredBody[0] : { tag: "Begin", exprs: loweredBody };
+        }
+
+        // Build nested let from inside out
+        let result: Expr;
+        const loweredBody = bodyForms.map(x => lowerSyntax(x, env, phase));
+        result = loweredBody.length === 1 ? loweredBody[0] : { tag: "Begin", exprs: loweredBody };
+
+        for (let i = bindsList.items.length - 1; i >= 0; i--) {
+          const bp = expectList(bindsList.items[i], "let*: binding must be list");
+          if (bp.items.length !== 2) throw new Error("let*: binding must be (x init)");
+          const id = expectIdent(bp.items[0], "let*: binder must be ident");
+          const b = resolveIdent(id, env, phase);
+          if (!b) throw new Error("let* binder did not resolve");
+          const internal = b.value as string;
+          const init = lowerSyntax(bp.items[1], env, phase);
+
+          // Wrap in: ((lambda (x) result) init)
+          result = {
+            tag: "App",
+            fn: { tag: "Lambda", params: [internal], body: result },
+            args: [init],
+          };
+        }
+
+        return result;
+      }
+
       case "define": {
         if (items.length !== 3) throw new Error("define: expected (define x rhs)");
         const id = expectIdent(items[1], "define: name must be ident");
@@ -306,6 +344,64 @@ export function lowerSyntax(stx: Syntax, env: Env, phase = 0): Expr {
           fn: { tag: "Var", name: "cons" },
           args: [head, delayedTail],
         };
+      }
+
+      case "cond": {
+        // (cond (test1 e1...) (test2 e2...) ... (else en...))
+        // Desugars to nested if: (if test1 (begin e1...) (if test2 (begin e2...) ...))
+        const clauses = items.slice(1);
+        if (clauses.length === 0) {
+          // Empty cond returns #f
+          return { tag: "Lit", value: false };
+        }
+
+        // Process clauses from right to left to build nested if
+        let result: Expr = { tag: "Lit", value: false }; // default: #f if no else
+
+        for (let i = clauses.length - 1; i >= 0; i--) {
+          const clause = clauses[i];
+          const clauseList = expectList(clause, "cond clause must be list");
+          if (clauseList.items.length === 0) {
+            throw new Error("cond: empty clause");
+          }
+
+          const testStx = clauseList.items[0];
+          const bodyItems = clauseList.items.slice(1);
+
+          // Check for 'else' clause
+          const isElse = isIdent(testStx) && testStx.name === "else";
+
+          if (isElse) {
+            // (else e1 e2 ...) → (begin e1 e2 ...)
+            if (bodyItems.length === 0) {
+              result = { tag: "Lit", value: null }; // unit
+            } else if (bodyItems.length === 1) {
+              result = lowerSyntax(bodyItems[0], env, phase);
+            } else {
+              result = { tag: "Begin", exprs: bodyItems.map(b => lowerSyntax(b, env, phase)) };
+            }
+          } else {
+            // (test e1 e2 ...) → (if test (begin e1 e2 ...) <rest>)
+            let body: Expr;
+            if (bodyItems.length === 0) {
+              // (test) with no body - return test value (like Scheme)
+              body = lowerSyntax(testStx, env, phase);
+            } else if (bodyItems.length === 1) {
+              body = lowerSyntax(bodyItems[0], env, phase);
+            } else {
+              body = { tag: "Begin", exprs: bodyItems.map(b => lowerSyntax(b, env, phase)) };
+            }
+
+            result = {
+              tag: "If",
+              test: lowerSyntax(testStx, env, phase),
+              conseq: body,
+              alt: result,
+            };
+          }
+        }
+
+        return result;
       }
     }
   }

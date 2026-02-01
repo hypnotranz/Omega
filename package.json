@@ -38,8 +38,17 @@
     "omega-repl": "npx tsx bin/omega-repl.ts",
     "omega-fast": "node dist/omega-repl.mjs",
     "omega-debugger": "npx tsx bin/omega-debugger.ts",
+    "manual": "npx tsx bin/manual-runner.ts",
     "prepublishOnly": "npm run build && npm test"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hypnotranz/OmegaLLM.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hypnotranz/OmegaLLM/issues"
+  },
+  "homepage": "https://github.com/hypnotranz/OmegaLLM#readme",
   "keywords": [
     "lisp",
     "llm",

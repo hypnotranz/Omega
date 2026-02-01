@@ -2999,6 +2999,15 @@ async function main() {
     }
 
     emitBatchOutput(args, newState, output, metadata);
+
+    // Force immediate exit - don't wait for event loop
+    // Close any open handles and exit
+    if (newState.sessionWriter) {
+      try { newState.sessionWriter.close(); } catch {}
+    }
+
+    // Aggressive exit for batch mode
+    setTimeout(() => process.exit(0), 100);
     return;
   }
 

@@ -9,6 +9,7 @@ export { demo5ConstraintRepair } from "./demo5-constraint-repair";
 export { demo6SemanticMacros } from "./demo6-semantic-macros";
 export { demo7Compilation } from "./demo7-compilation";
 export { demo8MetaCircular } from "./demo8-meta-circular";
+export { demo9OprCallbacks } from "./demo9-opr-callbacks";
 
 import type { DemoDefinition } from "../harness/types";
 import { demo1OracleRepl } from "./demo1-oracle-repl";
@@ -19,6 +20,7 @@ import { demo5ConstraintRepair } from "./demo5-constraint-repair";
 import { demo6SemanticMacros } from "./demo6-semantic-macros";
 import { demo7Compilation } from "./demo7-compilation";
 import { demo8MetaCircular } from "./demo8-meta-circular";
+import { demo9OprCallbacks } from "./demo9-opr-callbacks";
 
 /**
  * All available demos.
@@ -32,6 +34,7 @@ export const allDemos: DemoDefinition[] = [
   demo6SemanticMacros,
   demo7Compilation,
   demo8MetaCircular,
+  demo9OprCallbacks,
 ];
 
 /**

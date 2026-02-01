@@ -34,7 +34,14 @@ export type Frame =
   | { tag: "KBind"; fn: Val; env: Env }
   | { tag: "KHandlerBind"; handlers: ConditionHandler[] }
   | { tag: "KRestartBind"; restarts: RestartBinding[]; savedKont: Frame[]; env: Env; store: Store; handlers: HandlerFrame[] }
-  | { tag: "KSignaling"; condition: ConditionVal; required: boolean };
+  | { tag: "KSignaling"; condition: ConditionVal; required: boolean }
+  // Higher-order function continuations (map, filter, fold with closures)
+  | { tag: "KMapRest"; fn: Val; remaining: Val[]; acc: Val[]; env: Env }
+  | { tag: "KFilterRest"; fn: Val; remaining: Val[]; currentItem: Val; acc: Val[]; env: Env }
+  | { tag: "KFoldRest"; fn: Val; remaining: Val[]; env: Env }
+  // Stream continuations for closure support
+  | { tag: "KStreamMapHead"; fn: Val; streamTail: Val; env: Env }
+  | { tag: "KStreamToListRest"; remaining: number; acc: Val[]; env: Env };
 
 export type HandlerFrame = {
   hid: string;

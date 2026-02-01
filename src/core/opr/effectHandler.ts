@@ -4,9 +4,13 @@
  * Handles OPR effects from the CEKS machine, bridging between
  * Lisp's effect system and OPR's kernel execution.
  *
+ * THE KEYSTONE: This handler now wires callbacks so that OPR kernels
+ * can call back into the Lisp runtime, creating co-recursive
+ * symbolic/neural computation.
+ *
  * Effect names:
  * - "opr.step.<kernelId>" -> single kernel step
- * - "opr.fixpoint.<kernelId>" -> run kernel to completion
+ * - "opr.fixpoint.<kernelId>" -> run kernel to completion WITH CALLBACKS
  * - "opr.list" -> list available kernels
  */
 
@@ -18,6 +22,13 @@ import type { OprStepResult } from './types';
 import { InMemoryReceiptStore } from './receipts';
 import { getKernel, listKernels } from './kernels';
 import type { OprLLMAdapter } from './adapters/types';
+import type { CallbackContext } from './callbacks';
+
+/**
+ * Factory function to create a CallbackContext from current runtime state.
+ * This is THE KEYSTONE connection between OPR and the Lisp runtime.
+ */
+export type CallbackContextFactory = () => CallbackContext;
 
 /**
  * Configuration for the OPR effect handler
@@ -28,6 +39,17 @@ export interface OprEffectHandlerConfig {
 
   /** Default budget (max attempts per step) */
   defaultMaxAttempts?: number;
+
+  /**
+   * THE KEYSTONE: Factory to create callback context for kernel effects.
+   *
+   * When a kernel emits callback.eval_lisp, this factory creates the
+   * context that can evaluate Lisp code and return results.
+   *
+   * Without this, OPR is "typed prompt RPC".
+   * With this, OPR becomes a co-recursive symbolic/neural tower.
+   */
+  callbackFactory?: CallbackContextFactory;
 }
 
 /**
@@ -97,6 +119,9 @@ export async function handleOprEffect(
   // Create receipt store for this invocation
   const receipts = new InMemoryReceiptStore();
 
+  // THE KEYSTONE: Get callback context if factory is provided
+  const callbacks = config.callbackFactory?.();
+
   // Create runtime configuration
   const runtimeConfig: OprRuntimeConfig = {
     kernel,
@@ -105,6 +130,7 @@ export async function handleOprEffect(
     budget: {
       maxAttempts: config.defaultMaxAttempts ?? 3,
     },
+    callbacks, // THE KEYSTONE: Wire in callbacks
   };
 
   // Create runtime
@@ -116,7 +142,8 @@ export async function handleOprEffect(
       const result = await runtime.step({ program, state });
       return stepResultToVal(result);
     } else {
-      // Run to fixpoint
+      // Run to fixpoint WITH CALLBACKS (THE KEYSTONE)
+      // If callbacks are provided, kernels can now call back into Lisp!
       const result = await runtime.runToFixpoint({ program, state });
       return runResultToVal(result);
     }

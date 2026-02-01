@@ -1,5 +1,0 @@
-# Codesmith Configuration
-# Permanently sets gpt-5.2-codex as the model for all jobs
-
-model: gpt-5.2-codex
-provider: codex

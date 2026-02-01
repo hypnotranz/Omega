@@ -1,0 +1,32 @@
+[[RTM-TABLE [| Requirement | Specification | Implementation | Test | Demo |
+|-------------|---------------|----------------|------|------|
+| + | ARCHITECTURE/14-STDLIB.md:26 | src/core/prims.ts:105 | test/unit/continuations/call-cc.test.ts:36 | — |
+| - | ARCHITECTURE/14-STDLIB.md:27 | src/core/prims.ts:106 | test/unit/core/types.test.ts:6 | — |
+| * | ARCHITECTURE/14-STDLIB.md:28 | src/core/prims.ts:112 | — | — |
+| / | ARCHITECTURE/14-STDLIB.md:29 | src/core/prims.ts:142 | test/unit/core/types.test.ts:2 | — |
+| modulo | — | src/core/prims.ts:147 | — | — |
+| = | ARCHITECTURE/14-STDLIB.md:41 | src/core/prims.ts:117 | test/unit/core/types.test.ts:5 | — |
+| < | ARCHITECTURE/14-STDLIB.md:43 | src/core/prims.ts:122 | test/unit/core/types.test.ts:24 | — |
+| > | ARCHITECTURE/14-STDLIB.md:44 | src/core/prims.ts:127 | test/unit/core/types.test.ts:5 | — |
+| <= | ARCHITECTURE/14-STDLIB.md:45 | src/core/prims.ts:132 | — | — |
+| >= | ARCHITECTURE/14-STDLIB.md:46 | src/core/prims.ts:137 | — | — |
+| cons | ARCHITECTURE/14-STDLIB.md:89 | src/core/prims.ts:303 | test/unit/core/types.test.ts:7 | — |
+| car | ARCHITECTURE/14-STDLIB.md:96 | src/core/prims.ts:309 | — | — |
+| cdr | ARCHITECTURE/14-STDLIB.md:97 | src/core/prims.ts:318 | — | — |
+| list | ARCHITECTURE/14-STDLIB.md:88 | src/core/prims.ts:341 | test/unit/core/types.test.ts:33 | demo/lisp/ch04-higher-order.lisp:12 |
+| length | ARCHITECTURE/14-STDLIB.md:110 | src/core/prims.ts:723 | — | — |
+| append | ARCHITECTURE/14-STDLIB.md:126 | src/core/prims.ts:351 | — | — |
+| reverse | ARCHITECTURE/14-STDLIB.md:125 | src/core/prims.ts:763 | — | — |
+| map | ARCHITECTURE/14-STDLIB.md:120 | src/core/prims.ts:839 | — | — |
+| filter | ARCHITECTURE/14-STDLIB.md:121 | src/core/prims.ts:887 | — | — |
+| fold-left | — | src/core/prims.ts:961 | — | — |
+| fold-right | — | — | — | — |
+| string-append | ARCHITECTURE/14-STDLIB.md:172 | src/core/prims.ts:620 | — | — |
+| string-split | ARCHITECTURE/14-STDLIB.md:174 | src/core/prims.ts:564 | — | — |
+| string-contains? | ARCHITECTURE/14-STDLIB.md:162 | src/core/prims.ts:546 | — | — |
+| not | ARCHITECTURE/14-STDLIB.md:55 | src/core/prims.ts:157 | test/unit/continuations/call-cc.test.ts:63 | — |
+| null? | ARCHITECTURE/14-STDLIB.md:68 | src/core/prims.ts:327 | — | — |
+| number? | ARCHITECTURE/14-STDLIB.md:63 | src/core/prims.ts:702 | — | — |
+| string? | ARCHITECTURE/14-STDLIB.md:64 | src/core/prims.ts:697 | — | — |
+| symbol? | ARCHITECTURE/14-STDLIB.md:65 | src/core/prims.ts:692 | — | — |
+| list? | ARCHITECTURE/14-STDLIB.md:67 | — | — | — | ()]] [[STATS [[[total [30 ()]] [[complete [1 ()]] [[partial [25 ()]] [[coverage-percent [3.3333333333333335 ()]] ()]]]] ()]] ()]]
