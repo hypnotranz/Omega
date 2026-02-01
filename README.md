@@ -44,17 +44,16 @@ If most "LLM agents" feel like prompt glue and best‑effort scripts, OmegaLLM i
 ## Table of Contents
 
 - [⚡ TL;DR](#-tldr---get-running-in-60-seconds)
+- [🔥 Show Me The Cool Stuff](#-show-me-the-cool-stuff) ← **Start here!**
 - [Quick Start](#quick-start)
-- [⚠️ Common Gotchas](#️-common-gotchas) ← **Read this!**
-- [📖 The Manual](#-the-manual-structure-and-interpretation-of-linguistic-programs)
-- [🎨 Demo Gallery](#-demo-gallery)
+- [⚠️ Common Gotchas](#️-common-gotchas)
+- [Features at a Glance](#features-at-a-glance)
+- [📖 The Manual](#-the-manual-structure-and-interpretation-of-linguistic-programs) (27 chapters)
+- [🎨 Demo Gallery](#-demo-gallery) (49 demos)
 - [REPL Guide](#repl-guide)
 - [Sessions: Persistent State](#sessions-persistent-state-for-ai-agents)
-- [Features](#features)
-- [Why OmegaLLM](#why-omegallm)
 - [Core Primitives](#core-primitives-effects-search-streams)
 - [CLI Options](#cli-options)
-- [Contributing](#contributing)
 
 ---
 
@@ -76,6 +75,81 @@ If most "LLM agents" feel like prompt glue and best‑effort scripts, OmegaLLM i
 | **Budget/Policy** | Enforce spending limits and capability restrictions |
 
 **Run `:help` in the REPL to see all commands.**
+
+---
+
+## 🔥 Show Me The Cool Stuff
+
+### 1. Structured Data Extraction (with confidence + source citations!)
+
+```bash
+npm run omega-fast -- --cmd ':opr-run opr.extract.v1 {"text":"John Smith (john@example.com) called about order #12345 on Jan 15.","schema":{"name":"string","email":"string","order_id":"string"}}'
+```
+
+**Output:**
+```json
+{
+  "data": { "name": "John Smith", "email": "john@example.com", "order_id": "12345" },
+  "confidence": { "name": 0.98, "email": 0.95, "order_id": 0.90 },
+  "sources": {
+    "name": "line 1: 'John Smith'",
+    "email": "line 1: '(john@example.com)'",
+    "order_id": "line 1: 'order #12345'"
+  }
+}
+```
+
+### 2. Agentic Mode - LLM Writes & Runs Code
+
+```text
+Omega> :ask "Define a fibonacci function and compute fib(10)"
+; LLM writes: (define (fib n) ...)
+; LLM evals: (fib 10)
+; LLM sees result: 55
+Answer: The result of fib(10) is 55.
+```
+
+### 3. Backtracking Search with LLM Validation
+
+```lisp
+;; Try tones until LLM confirms it matches "apologetic"
+(let ((tone (amb "formal" "friendly" "apologetic")))
+  (let ((reply (effect infer.op (list "Write a " tone " response..."))))
+    (require (matches-tone? reply "apologetic"))
+    reply))
+;; Auto-backtracks through options until validation passes!
+```
+
+### 4. 10 Built-in OPR Kernels
+
+```text
+Omega> :opr-list
+  opr.classify.v1   — Classify with confidence scores
+  opr.extract.v1    — Extract structured data with sources
+  opr.analyze.v1    — Analyze text/code
+  opr.transform.v1  — Transform content
+  opr.validate.v1   — Validate against criteria
+  opr.plan.v1       — Generate plans
+  ... and more
+```
+
+### 5. Full Debugger with Time Travel
+
+```text
+Omega> :debug (+ (* 2 3) (* 4 5))
+Omega> :run
+=== DONE at step 22 === Result: 26
+
+Omega> :trace
+  [0] Expr: Begin(1 exprs)
+  [5] Expr: Var(*) | stack=3
+  [10] Value: 3 | stack=3
+  [19] Value: 20 | stack=2
+  ...
+
+Omega> :goto 10        ;; Jump back in time!
+Control: Value: 3
+```
 
 ---
 
@@ -208,8 +282,13 @@ Omega> :state
 
 **Most impressive demo (start here!):**
 ```bash
-npm run demo        # Watch the LLM query the runtime to answer questions!
+npm run demo        # Showcase: Higher-order functions, backtracking search, agentic LLM!
 ```
+
+This demo shows:
+- ✓ Map/filter over LLM operations
+- ✓ Backtracking search with `amb` + semantic validation
+- ✓ Agentic LLM that queries your code to answer questions
 
 **More examples:**
 ```bash
@@ -876,10 +955,11 @@ npm run omega-fast -- --verbose
 We welcome contributions! Please:
 
 1. Read the [ARCHITECTURE/](ARCHITECTURE/) docs to understand the system
-2. Check existing issues and PRs
-3. Write tests for new features
-4. Follow the existing code style
-5. Update documentation
+2. Check [DEFECTS/](DEFECTS/) for known issues before reporting
+3. Check existing issues and PRs
+4. Write tests for new features
+5. Follow the existing code style
+6. Update documentation
 
 ---
 

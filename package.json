@@ -40,7 +40,7 @@
     "omega-fast": "node dist/omega-repl.mjs",
     "omega-debugger": "npx tsx bin/omega-debugger.ts",
     "manual": "npx tsx bin/manual-runner.ts",
-    "demo": "echo '\n🚀 Running the Agentic REPL demo - watch the LLM query the runtime!\n' && npx tsx bin/manual-runner.ts 9",
+    "demo": "echo '\n🚀 OMEGALLM SHOWCASE - Multiple killer features in one demo!\n' && npx tsx bin/manual-runner.ts 0",
     "example": "npm run demo",
     "prepublishOnly": "npm run build && npm test"
   },

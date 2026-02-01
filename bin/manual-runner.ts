@@ -33,6 +33,9 @@ const EXAMPLES_DIR = path.join(__dirname, "..", "demo", "lisp");
 
 // Chapter name mappings
 const CHAPTER_NAMES: Record<string, string> = {
+  "0": "ch00-showcase",
+  "showcase": "ch00-showcase",
+  "demo": "ch00-showcase",
   "1": "ch01-getting-started",
   "2": "ch02-llm-calls",
   "3": "ch03-composition",
