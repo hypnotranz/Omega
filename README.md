@@ -2,6 +2,30 @@
 
 > **A governed, replayable semantic execution runtime for AI agents**
 
+## ⚡ TL;DR - Get Running in 60 Seconds
+
+```bash
+npm install && npm run build          # Install & build
+echo "OPENAI_API_KEY=sk-..." > .env   # Add your API key
+npm run omega-fast                     # Start REPL
+```
+
+```text
+Omega> :help                           # SEE ALL COMMANDS FIRST
+Omega> (+ 1 2)                         # Basic math
+=> 3
+Omega> (effect infer.op "Hello!")      # Call LLM
+=> "Hi there!"
+Omega> npm run manual 5                # Run demo (in another terminal)
+```
+
+**📖 [Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)** — See 49 working demos with live LLM outputs
+**📖 [Full Manual](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/)** — 27 chapters, SICP for LLMs
+
+---
+
+## What Is This?
+
 **OmegaLLM is a governed, replayable semantic execution runtime.**
 It *looks* like a small Lisp dialect, but the product value is the **kernel**: a controlled evaluator (step machine) where **LLM/tool calls are reified effects**, executions produce **receipts**, and runs are **debuggable, budgeted, policy‑enforced, and replayable**.
 
@@ -15,24 +39,43 @@ If most "LLM agents" feel like prompt glue and best‑effort scripts, OmegaLLM i
 
 **Repository**: [github.com/hypnotranz/Omega](https://github.com/hypnotranz/Omega)
 
-**📖 [Read the Manual](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/)** — SICP for the Age of Language Models (27 chapters)
-**🎨 [Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)** — All 49 demos with live outputs
-
 ---
 
 ## Table of Contents
 
-- [Features](#features)
-- [Why OmegaLLM](#why-omegallm)
+- [⚡ TL;DR](#-tldr---get-running-in-60-seconds)
 - [Quick Start](#quick-start)
+- [⚠️ Common Gotchas](#️-common-gotchas) ← **Read this!**
 - [📖 The Manual](#-the-manual-structure-and-interpretation-of-linguistic-programs)
 - [🎨 Demo Gallery](#-demo-gallery)
 - [REPL Guide](#repl-guide)
-- [Sessions: Persistent State for AI Agents](#sessions-persistent-state-for-ai-agents)
+- [Sessions: Persistent State](#sessions-persistent-state-for-ai-agents)
+- [Features](#features)
+- [Why OmegaLLM](#why-omegallm)
 - [Core Primitives](#core-primitives-effects-search-streams)
-- [Advanced Documentation](#advanced-documentation)
+- [CLI Options](#cli-options)
 - [Contributing](#contributing)
-- [License](#license)
+
+---
+
+## Features at a Glance
+
+| Category | What You Get |
+|----------|--------------|
+| **LLM Calls** | `(effect infer.op "prompt")` — LLM inference as a first-class operation |
+| **Agentic Mode** | `:ask "question"` — LLM with tool-use that can eval code iteratively |
+| **Higher-Order** | `map`, `filter`, `fold` over LLM operations |
+| **Backtracking** | `amb` operator — generate candidates, validate, auto-backtrack on failure |
+| **Lazy Streams** | Infinite sequences, only force what you need |
+| **Debugger** | `:debug`, `:step`, `:break`, `:state` — step through execution |
+| **Time Travel** | `:goto N`, `:back`, `:trace` — jump to any point in execution |
+| **Sessions** | `:session save/load/goto` — persistent state across restarts |
+| **Snapshots** | `:save`, `:restore` — checkpoint and restore evaluator state |
+| **Receipts** | Every LLM call produces auditable provenance |
+| **OPR Kernels** | `:opr-run` — run structured inference programs |
+| **Budget/Policy** | Enforce spending limits and capability restrictions |
+
+**Run `:help` in the REPL to see all commands.**
 
 ---
 
@@ -159,6 +202,75 @@ Omega> (effect infer.op "Hello!")
 
 Omega> :state
 # Inspect the full evaluator state (control, environment, store, continuation)
+```
+
+### 4. Run the Demos
+
+**Most impressive demo (start here!):**
+```bash
+npm run demo        # Watch the LLM query the runtime to answer questions!
+```
+
+**More examples:**
+```bash
+npm run manual 1    # Chapter 1: Getting Started
+npm run manual 5    # Chapter 5: Backtracking search with amb
+npm run manual 7    # Chapter 7: Lazy streams
+npm run manual 8    # Chapter 8: The debugger
+```
+
+**See all 49 demos**: [DEMO-GALLERY.md](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)
+
+---
+
+## ⚠️ Common Gotchas
+
+Things that will trip you up:
+
+### 1. Run `:help` first!
+The REPL has tons of commands. Type `:help` immediately to see debugging, sessions, breakpoints, time travel, etc.
+
+### 2. CLI flag is `--cmd`, not `--eval`
+```bash
+# WRONG
+npm run omega-fast -- --eval "(+ 1 2)"
+
+# RIGHT
+npm run omega-fast -- --cmd "(+ 1 2)"
+```
+
+### 3. Sessions require explicit save/load/goto
+The `--session` flag just names the session for recording. It does NOT auto-restore state.
+
+**To persist state across process restarts:**
+```text
+# Session 1: Save before quitting
+Omega> (define x 42)
+Omega> :session save mywork
+Omega> :quit
+
+# Session 2: Load AND goto to restore
+Omega> :session load mywork
+Omega> :session goto 3        # <-- THIS restores the environment!
+Omega> x
+=> 42
+```
+
+`:session load` only loads the trace. `:session goto <seq>` actually restores the environment.
+
+### 4. Session files location
+Sessions are stored in `.omega-session/sessions/` (not `.omega-sessions/`):
+```
+.omega-session/sessions/<name>.jsonl       # Event log
+.omega-session/sessions/<name>.index.json  # Index with checkpoints
+```
+
+### 5. Use the Demo Gallery!
+Don't guess at syntax. The [Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md) has 49 working examples with actual LLM outputs.
+
+```bash
+npm run manual 5   # See amb backtracking in action
+npm run manual 7   # See lazy streams
 ```
 
 ---
@@ -308,7 +420,35 @@ This shows ALL available REPL commands - debugging, execution control, sessions,
 ```text
 :record on|off         Toggle trace recording
 :dump <file>           Save trace to file
-:load <file>           Load trace from file
+:replay <file>         Load and replay trace from file
+```
+
+#### File Loading
+```text
+:loadfile <path>       Load and evaluate code from file
+```
+
+#### Agentic LLM Mode
+```text
+:ask <question>        Ask LLM with tool-use (it can eval code iteratively!)
+:traces                List recent LLM interaction traces
+:trace <id>            Show trace summary
+:trace <id> -v         Show full trace (prompts, responses, tool calls)
+```
+
+#### OPR (Omega Protocol Runtime)
+```text
+:opr-list              List available OPR kernels
+:opr-run <kernel> <json>  Run kernel with program JSON
+:opr-receipts          Show OPR receipt chain for session
+:opr-verify [file]     Verify OPR receipt chain integrity
+```
+
+#### Advanced Inspection
+```text
+:stack                 Show call stack
+:frame <n>             Inspect stack frame N
+:control               Show current control expression/value
 ```
 
 ### Example REPL Session
@@ -359,23 +499,49 @@ agent.call_tool("eval", "(+ x 5)")           # ERROR: x is undefined!
 
 ### OmegaLLM's Solution: Named Sessions
 
-With sessions, state persists:
+**Within a single REPL session**, state persists naturally:
+```lisp
+Omega> (define x 42)
+=> x
+Omega> (+ x 10)
+=> 52
+```
+
+**Across separate process invocations**, use `:session save` and `:session load` + `:session goto`:
+
 ```bash
-# First tool call
-omega --session agent1 -e "(define x 10)"
-# => x defined in session "agent1"
+# Session 1: Define things and save
+$ npm run omega-fast
+Omega> (define x 42)
+=> x
+Omega> (define (double n) (* n 2))
+=> double
+Omega> :session save mysession
+Session saved as 'mysession'
+Omega> :quit
 
-# Second tool call (minutes or hours later)
-omega --session agent1 -e "(+ x 5)"
-# => 15  (x is still there!)
+# Session 2: Later (hours/days), restore and continue
+$ npm run omega-fast
+Omega> :session load mysession
+Loaded session 'mysession' (6 events)
+Omega> :session goto 5           # Jump to checkpoint to restore env
+Jumped to seq 5
+Omega> x                         # x is restored!
+=> 42
+Omega> (double x)
+=> 84
+```
 
-# Third tool call
-omega --session agent1 -e "(define (foo n) (* n x))"
-# => <closure>
+**Session files are stored in:** `OmegaLLM/.omega-session/sessions/` (relative to project root)
 
-# Fourth tool call
-omega --session agent1 -e "(foo 3)"
-# => 30
+When you're working from inside the `OmegaLLM/` directory, they're at `.omega-session/sessions/`.
+
+**Example session**: After running `npm install`, an example session `getting-started.jsonl` is automatically created. Try loading it:
+```text
+Omega> :session load getting-started
+Omega> :session goto 11
+Omega> greeting
+=> "Hello, OmegaLLM!"
 ```
 
 ### What's in a Session?
@@ -405,62 +571,107 @@ A session is **not** just a variable dictionary. It's a complete, **persistent e
 
 ### Session Commands
 
+```text
+:session list              List all saved sessions
+:session save <name>       Save current session to disk
+:session load <name>       Load a session's trace (doesn't restore env yet)
+:session goto <seq>        Jump to sequence number, RESTORES environment
+:session trace             View the session's execution trace
+:session fork <name>       Fork current session to new name
+```
+
+**Important**: `:session load` only loads the trace. You must `:session goto <seq>` to actually restore the environment state.
+
 ```bash
-# Create/use named session
-omega --session <name> -e "<expression>"
+# Sessions persist on disk at (from project root):
+OmegaLLM/.omega-session/sessions/<name>.jsonl      # Event log
+OmegaLLM/.omega-session/sessions/<name>.index.json # Index with checkpoints
 
-# Multiple sessions (isolated)
-omega --session agent1 -e "(define x 10)"
-omega --session agent2 -e "(define x 99)"  # Different x!
-omega --session agent1 -e "x"              # => 10
-omega --session agent2 -e "x"              # => 99
-
-# Sessions persist on disk
-# Location: .omega-sessions/<session-name>/
+# Or if you're inside OmegaLLM/ directory:
+.omega-session/sessions/<name>.jsonl
+.omega-session/sessions/<name>.index.json
 ```
 
 ### Sessions in the REPL
 
 ```bash
-# Start REPL with named session
-omega --session my-work
-
-# Or in npm scripts
+# Start REPL (with optional session name for recording)
+npm run omega-fast
 npm run omega-fast -- --session my-work
 ```
 
-Inside REPL:
+**Complete example of session persistence**:
 ```text
+# === First session ===
 Omega> (define data (list 1 2 3))
-Omega> :save checkpoint1
+=> data
+Omega> (define (sum lst) (fold-left + 0 lst))
+=> sum
+Omega> (sum data)
+=> 6
+Omega> :session save mywork
+Session saved as 'mywork'
 Omega> :quit
 
-# Later, in new REPL session
-$ omega --session my-work
-Omega> data              # Still there!
+# === Later: new process ===
+$ npm run omega-fast
+Omega> :session list
+Saved sessions:
+  mywork (8 events, 1 checkpoints)
+
+Omega> :session load mywork
+Loaded session 'mywork' (8 events)
+Use :session goto <seq> to jump, :session trace to view
+
+Omega> :session trace
+[000] REPL > (define data (list 1 2 3))
+[001] EVAL ~ (define data (list 1 2 3))
+[002] OUT  => data
+...
+[007] SAVE * checkpoint (manual)
+
+Omega> :session goto 7
+Jumped to seq 7
+  Replayed 0 steps
+
+Omega> data                 # Environment restored!
 => (1 2 3)
-Omega> :restore checkpoint1  # Can restore snapshots
+Omega> (sum data)
+=> 6
 ```
 
 ### Why This Matters for AI Agents
 
-**Use case**: Code review agent
+**Use case**: An AI agent that maintains state across tool calls.
 
-```bash
-# Step 1: Agent scans codebase
-omega --session review-123 -e "(define files (scan-directory \"src/\"))"
+The agent keeps a single REPL process running (or uses `:session save`/`:session load` + `:session goto` to persist across restarts):
 
-# Step 2: Agent analyzes patterns (5 minutes later)
-omega --session review-123 -e "(define issues (analyze-files files))"
+```lisp
+;; Agent's first tool call
+Omega> (define files (list "auth.ts" "user.ts" "api.ts"))
+=> files
 
-# Step 3: Agent generates report (user makes edits, agent resumes)
-omega --session review-123 -e "(generate-report issues)"
+;; Agent's second tool call (same REPL session)
+Omega> (define issues (filter security-issue? files))
+=> issues
 
-# Step 4: Agent can resume even after hours
-omega --session review-123 -e "(length issues)"  # Still works!
+;; Agent's third call
+Omega> (generate-report issues)
+=> "Security report: 2 issues found..."
+
+;; Agent saves before shutdown
+Omega> :session save agent-review-123
 ```
 
-**The evaluator state is durable**, like a tmux session for code execution.
+Later, the agent can restore:
+```lisp
+Omega> :session load agent-review-123
+Omega> :session goto 8
+Omega> issues              ;; Still there!
+=> ("auth.ts" "api.ts")
+```
+
+**The evaluator state is durable** — like tmux for code execution.
 
 See **[ARCHITECTURE/28-SESSION.md](ARCHITECTURE/28-SESSION.md)** for implementation details.
 
@@ -630,37 +841,33 @@ OmegaLLM/
 
 ```bash
 omega [options]                     # Start interactive REPL
-omega [options] <file>              # Execute Omega file
-omega --eval <code>                 # Evaluate code directly
-omega --session <name> -e <expr>    # Evaluate in named session
+omega [options] <file>              # Execute Omega file (via -f)
+omega --cmd <code>                  # Evaluate single expression
 
 Options:
-  -h, --help                        Show help
-  -v, --version                     Show version
-  -e, --eval <code>                 Evaluate code and exit
-  -d, --debug                       Enable debug mode
-  --verbose                         Show detailed execution
-  -s, --session <name>              Set session name for persistence
+  -c, --cmd <code>                  Evaluate code and exit
+  -f, --file <path>                 Execute Omega file
+  -s, --session <name>              Session name (for recording)
+  -j, --json                        Output as JSON
+  -v, --verbose                     Show detailed execution
 ```
 
 Examples:
 ```bash
 # Interactive REPL
-omega
-
-# Execute file
-omega program.lisp
+npm run omega-fast
 
 # One-off evaluation
-omega --eval "(+ 1 2 3)"
+npm run omega-fast -- --cmd "(+ 1 2 3)"
 
-# Sessioned evaluation (for agents)
-omega --session agent1 -e "(define x 10)"
-omega --session agent1 -e "(+ x 5)"
+# Execute file
+npm run omega-fast -- --file program.lisp
 
-# Debug mode
-omega --debug --session debug1
+# Start REPL with verbose output
+npm run omega-fast -- --verbose
 ```
+
+**Note**: The `--session` flag names the session for recording, but does NOT auto-restore from a previous session. For cross-process persistence, use `:session save` / `:session load` + `:session goto` inside the REPL.
 
 ---
 

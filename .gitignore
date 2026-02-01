@@ -29,12 +29,13 @@ Thumbs.db
 
 # Test artifacts
 coverage/
-.omega-session/
 __pycache__/
 *.pyc
 
-# Session folders
+# Session folders (ignore user sessions, but keep example)
 .omega-session/
+!.omega-session/sessions/
+!.omega-session/sessions/getting-started.jsonl
 .omega-sessions/
 /.omega/
 /experimental/
