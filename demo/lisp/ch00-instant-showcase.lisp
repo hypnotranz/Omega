@@ -7,8 +7,19 @@
 
 (display "\n")
 (display "╔══════════════════════════════════════════════════════════════════╗\n")
-(display "║  🚀 OMEGALLM INSTANT SHOWCASE - These primitives WORK!          ║\n")
+(display "║  OmegaLLM Demo — Parallel Operations, Backtracking, Persistence ║\n")
 (display "╚══════════════════════════════════════════════════════════════════╝\n\n")
+
+(display "BEFORE (traditional agent):\n")
+(display "  for file in files:                    # 100 sequential tool calls\n")
+(display "      agent.tool_call('analyze', file)  # 30 sec each = 50 min total\n")
+(display "  # Process exits? All state lost.\n\n")
+
+(display "AFTER (OmegaLLM):\n")
+(display "  (map analyze-file files)              # One expression, parallel\n")
+(display "  :session save mywork                  # State persists across restarts\n\n")
+
+(display "VERIFICATION (runs without API key):\n")
 
 ;; ========================================================================
 ;; PART 1: Higher-Order Functions (map/filter/fold)

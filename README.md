@@ -59,8 +59,11 @@ No serialization to files. No context reconstruction. Just persistent in-memory 
 
 ```bash
 npm install && npm run build          # Install & build
+npm run demo-instant                   # Proves it works - NO API key needed!
+
+# With LLM integration:
 echo "OPENAI_API_KEY=sk-..." > .env   # Add your API key
-npm run demo                           # See all killer features
+npm run demo                           # See full LLM features
 ```
 
 **📖 [Demo Index](DEMO-INDEX.md)** — **All 39 demos organized by category** ← Start here!
@@ -92,6 +95,7 @@ Instead of writing glue code that loses context every call, you write **programs
 - [Sessions: Persistent State](#sessions-persistent-state-for-ai-agents)
 - [Core Primitives](#core-primitives-effects-search-streams)
 - [CLI Options](#cli-options)
+- [📚 Theoretical Foundations](#theoretical-foundations-the-treatise) ← The formal vocabulary
 
 ---
 
@@ -1020,10 +1024,52 @@ See [LICENSE](LICENSE) file for details.
 
 ---
 
+## Theoretical Foundations: The Treatise
+
+OmegaLLM is built on a formal vocabulary that bridges classical computer science patterns with LLM-era inference. The **[Treatise](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/chapters/TREATISE.md)** defines this vocabulary precisely.
+
+### The Core Thesis
+
+> **Many LLM tasks have latent algorithmic structure that should be expressed as program skeletons: data structures + algorithms, not prompt chains.**
+
+Once inference is a first-class effect and artifacts are addressable, we can systematically re-use FP/SICP/GoF patterns as **cognitive equivalents**.
+
+### Key Vocabulary
+
+| Term | Definition |
+|------|------------|
+| **CDT** (Cognitive Data Type) | A first-class value whose denotation is a semantic object (meaning-level structure), not raw text. Has invariants, typed operations, and canonical representation. |
+| **CPO** (Cognitive Primitive Operation) | A minimal, typed semantic instruction—the "ISA" of cognition: classify, extract, rewrite, validate. Composable via Kleisli operators. |
+| **CA** (Cognitive Algorithm) | A reusable program skeleton interleaving compute + cognitive effects: beam search, propagator fixpoint, compilation pipelines. |
+| **CE** (Cognitive Effect) | An algebraic effect boundary for non-pure operations: inference, retrieval, tool invocation. Includes budget, contracts, and provenance. |
+| **MNF** (Meaning Normal Form) | Canonical representation that prevents stringly-typed brittleness. Enables memoization and semantic equality. |
+| **ENV** (Semantic Environment) | Explicit pragmatics parameter: audience, domain, policy, style. Makes context explicit rather than hidden prompt-state. |
+
+### SICP Principles Applied
+
+The manual **[Structure and Interpretation of Linguistic Programs](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/)** adapts SICP for the LLM era:
+
+- **Procedures as black boxes** → LLM calls as composable semantic functions
+- **Higher-order functions** → map/filter/fold over inference operations
+- **Lazy streams** → infinite sequences of LLM-generated candidates
+- **Nondeterministic computing (amb)** → backtracking search with validation
+- **Metalinguistic abstraction** → evaluators that understand semantic meaning
+
+### See It Working
+
+| Resource | What You Get |
+|----------|--------------|
+| **[Instant Showcase](demo/lisp/ch00-instant-showcase.lisp)** | Run `npm run demo-instant` — proves all primitives work, no API key needed |
+| **[Demo Gallery](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/DEMO-GALLERY.md)** | 49 working examples with live LLM outputs |
+| **[Full Manual](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/)** | 27 chapters from basics to metacircular evaluation |
+| **[Treatise](MANUAL--STRUCTURE-AND-INTERPRETATION-OF-LINGUISTIC-PROGRAMS/chapters/TREATISE.md)** | Complete formal vocabulary (64 CDT definitions) |
+
+---
+
 **Built with inspiration from**:
 - SICP (Structure and Interpretation of Computer Programs)
 - Scheme R7RS specification
 - Modern LLM agent frameworks
 - Formal verification systems
 
-**OmegaLLM**: Where semantic computing meets structured inference. 🚀
+**OmegaLLM**: Where semantic computing meets structured inference.
